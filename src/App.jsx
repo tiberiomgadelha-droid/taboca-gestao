@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { LayoutDashboard, BookOpen, Package, ChefHat, Users, MessageSquare, Truck, Bot, Plus, Bell, Search, TrendingUp, TrendingDown, AlertTriangle, ShoppingCart, DollarSign, UserPlus, Activity, ChevronRight, ChevronDown, ChevronUp, X, Check, Edit, Trash2, Eye, MapPin, Phone, Calendar, Clock, ArrowUpRight, ArrowDownRight, FileText, CreditCard, Wallet, Send, RefreshCw, Flame, Package2, Target, MessageCircle, CheckCircle, XCircle, Circle, Settings, Layers, AlertCircle, Filter, Star, Archive, Loader, Home, Instagram, Route, Navigation, Wheat, Coffee, Pizza, ChevronLeft, Info, BarChart2, Building, PieChart as PieIcon, Menu, Receipt } from "lucide-react";
+import { LayoutDashboard, BookOpen, Package, ChefHat, Users, MessageSquare, Truck, Bot, Plus, Bell, Search, TrendingUp, TrendingDown, AlertTriangle, ShoppingCart, DollarSign, UserPlus, Activity, ChevronRight, ChevronDown, ChevronUp, X, Check, Edit, Trash2, Eye, EyeOff, MapPin, Phone, Calendar, Clock, ArrowUpRight, ArrowDownRight, FileText, CreditCard, Wallet, Send, RefreshCw, Flame, Package2, Target, MessageCircle, CheckCircle, XCircle, Circle, Settings, Layers, AlertCircle, Filter, Star, Archive, Loader, Home, Instagram, Route, Navigation, Wheat, Coffee, Pizza, ChevronLeft, Info, BarChart2, Building, PieChart as PieIcon, Menu, Receipt } from "lucide-react";
 
 // ═══════════════════════════════════════════════════
 // DESIGN SYSTEM
@@ -228,10 +228,14 @@ const Divider = ({label}) => (
 );
 
 // ═══════════════════════════════════════════════════
-// TABOCA LOGO (PNG)
+// TABOCA LOGO
 // ═══════════════════════════════════════════════════
 const TabocaLogo = ({size=80}) => (
-  <img src="/logomarca-taboca.png" alt="Taboca Logo" width={size} height={size} style={{objectFit:'contain'}} />
+  <img
+    src="/Logomarca_Taboca.png"
+    alt="Taboca Pão e Pizza"
+    style={{width:size, height:size, objectFit:'contain'}}
+  />
 );
 
 // ═══════════════════════════════════════════════════
@@ -252,12 +256,8 @@ const Sidebar = ({active, setActive, unreadCount, onBot}) => {
   return (
     <div style={{width:168,minWidth:168,background:'#fff',borderRight:`1px solid ${C.border}`,display:'flex',flexDirection:'column',height:'100vh',position:'fixed',left:0,top:0,zIndex:100}}>
       <div style={{padding:'20px 16px 16px',borderBottom:`1px solid ${C.borderLight}`}}>
-        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
-          <TabocaLogo size={72}/>
-          <div style={{textAlign:'center',lineHeight:1.2}}>
-            <div style={{fontSize:18,fontWeight:800,color:C.primary,fontFamily:'serif'}}>Taboca</div>
-            <div style={{fontSize:11,color:C.primary,fontWeight:500}}>pão & pizza</div>
-          </div>
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center'}}>
+          <TabocaLogo size={130}/>
         </div>
       </div>
       <nav style={{flex:1,padding:'12px 8px',overflowY:'auto'}}>
@@ -1449,13 +1449,228 @@ const ModalDefinirMeta = ({open, onClose, data, setData}) => {
   );
 };
 
+
+// ═══════════════════════════════════════════════════
+// LOGIN SCREEN
+// ═══════════════════════════════════════════════════
+const CREDENTIALS = { usuario: 'Tiberio', senha: btoa('210261') };
+
+const LoginScreen = ({ onLogin }) => {
+  const [usuario, setUsuario] = useState('');
+  const [senha, setSenha] = useState('');
+  const [erro, setErro] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [mostrarSenha, setMostrarSenha] = useState(false);
+  const [tentativas, setTentativas] = useState(0);
+  const [bloqueado, setBloqueado] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+
+  useEffect(() => {
+    if (bloqueado && countdown > 0) {
+      const t = setTimeout(() => setCountdown(c => c - 1), 1000);
+      return () => clearTimeout(t);
+    }
+    if (countdown === 0 && bloqueado) {
+      setBloqueado(false);
+      setTentativas(0);
+      setErro('');
+    }
+  }, [bloqueado, countdown]);
+
+  const handleLogin = () => {
+    if (bloqueado) return;
+    if (!usuario.trim() || !senha.trim()) {
+      setErro('Preencha usuário e senha.');
+      return;
+    }
+    setLoading(true);
+    setTimeout(() => {
+      const senhaCorreta = btoa(senha) === CREDENTIALS.senha;
+      const usuarioCorreto = usuario.trim().toLowerCase() === CREDENTIALS.usuario.toLowerCase();
+      if (usuarioCorreto && senhaCorreta) {
+        setErro('');
+        onLogin();
+      } else {
+        const novasTentativas = tentativas + 1;
+        setTentativas(novasTentativas);
+        if (novasTentativas >= 3) {
+          setBloqueado(true);
+          setCountdown(30);
+          setErro('Muitas tentativas incorretas. Aguarde 30 segundos.');
+        } else {
+          setErro(`Usuário ou senha incorretos. Tentativa ${novasTentativas}/3.`);
+        }
+      }
+      setLoading(false);
+    }, 700);
+  };
+
+  return (
+    <div style={{
+      minHeight: '100vh', background: 'linear-gradient(135deg, #FAF7F4 0%, #F0E8DE 50%, #FAF7F4 100%)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontFamily: "'Montserrat', sans-serif", position: 'relative', overflow: 'hidden',
+    }}>
+      {/* Decorative background circles */}
+      <div style={{position:'absolute',width:400,height:400,borderRadius:'50%',background:`${C.primary}08`,top:-100,right:-100,pointerEvents:'none'}}/>
+      <div style={{position:'absolute',width:300,height:300,borderRadius:'50%',background:`${C.amber}10`,bottom:-80,left:-80,pointerEvents:'none'}}/>
+      <div style={{position:'absolute',width:200,height:200,borderRadius:'50%',background:`${C.primary}06`,top:'40%',left:'10%',pointerEvents:'none'}}/>
+
+      <div style={{
+        width: '100%', maxWidth: 400, margin: '0 16px',
+        background: '#fff', borderRadius: 20,
+        boxShadow: '0 20px 60px rgba(123,58,16,0.12), 0 4px 16px rgba(0,0,0,0.06)',
+        overflow: 'hidden',
+      }}>
+        {/* Header com logo */}
+        <div style={{
+          background: `linear-gradient(135deg, ${C.primary} 0%, ${C.primaryLight} 100%)`,
+          padding: '36px 32px 28px', textAlign: 'center',
+        }}>
+          <div style={{
+            width: 90, height: 90, borderRadius: 20,
+            background: 'rgba(255,255,255,0.15)', margin: '0 auto 16px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.2)',
+          }}>
+            <img src="/Logomarca_Taboca.png" alt="Taboca" style={{width:70,height:70,objectFit:'contain',filter:'brightness(10)'}}/>
+          </div>
+          <div style={{fontSize:22,fontWeight:800,color:'#fff',letterSpacing:'-0.02em'}}>Taboca Gestão</div>
+          <div style={{fontSize:12,color:'rgba(255,255,255,0.75)',marginTop:4,fontWeight:500}}>Sistema de Gestão Empresarial</div>
+        </div>
+
+        {/* Form */}
+        <div style={{padding: '32px'}}>
+          <div style={{fontSize:15,fontWeight:700,color:C.navy,marginBottom:6}}>Bem-vindo, Tiba! 👋</div>
+          <div style={{fontSize:12,color:C.navyLight,marginBottom:24}}>Faça login para acessar o painel.</div>
+
+          {/* Usuário */}
+          <div style={{marginBottom:16}}>
+            <label style={{...s.label}}>Usuário</label>
+            <div style={{position:'relative'}}>
+              <div style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)'}}>
+                <Users size={16} color={C.navyLight}/>
+              </div>
+              <input
+                value={usuario}
+                onChange={e=>{setUsuario(e.target.value);setErro('');}}
+                onKeyDown={e=>e.key==='Enter'&&handleLogin()}
+                placeholder="Digite seu usuário"
+                disabled={bloqueado}
+                style={{
+                  ...s.input, paddingLeft: 40,
+                  border: `1.5px solid ${erro&&!loading?C.red:C.border}`,
+                  opacity: bloqueado ? 0.5 : 1,
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Senha */}
+          <div style={{marginBottom:24}}>
+            <label style={{...s.label}}>Senha</label>
+            <div style={{position:'relative'}}>
+              <div style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)'}}>
+                <Settings size={16} color={C.navyLight}/>
+              </div>
+              <input
+                type={mostrarSenha?'text':'password'}
+                value={senha}
+                onChange={e=>{setSenha(e.target.value);setErro('');}}
+                onKeyDown={e=>e.key==='Enter'&&handleLogin()}
+                placeholder="Digite sua senha"
+                disabled={bloqueado}
+                style={{
+                  ...s.input, paddingLeft: 40, paddingRight: 44,
+                  border: `1.5px solid ${erro&&!loading?C.red:C.border}`,
+                  opacity: bloqueado ? 0.5 : 1,
+                }}
+              />
+              <button
+                onClick={()=>setMostrarSenha(v=>!v)}
+                style={{position:'absolute',right:12,top:'50%',transform:'translateY(-50%)',border:'none',background:'none',cursor:'pointer',padding:4}}
+              >
+                {mostrarSenha
+                  ? <Eye size={16} color={C.navyLight}/>
+                  : <EyeOff size={16} color={C.navyLight}/>}
+              </button>
+            </div>
+          </div>
+
+          {/* Erro */}
+          {erro && (
+            <div style={{
+              background: C.redLight, border:`1px solid #FCA5A5`,
+              borderRadius: 8, padding: '10px 14px', marginBottom: 16,
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              <AlertTriangle size={14} color={C.red}/>
+              <span style={{fontSize:12,color:C.red,fontWeight:600}}>{erro}</span>
+              {bloqueado && countdown > 0 && (
+                <span style={{marginLeft:'auto',fontSize:12,fontWeight:700,color:C.red}}>{countdown}s</span>
+              )}
+            </div>
+          )}
+
+          {/* Botão */}
+          <button
+            onClick={handleLogin}
+            disabled={loading || bloqueado}
+            style={{
+              width: '100%', padding: '13px',
+              background: bloqueado ? C.navyLight : `linear-gradient(135deg, ${C.primary} 0%, ${C.primaryLight} 100%)`,
+              color: '#fff', border: 'none', borderRadius: 10,
+              fontSize: 14, fontWeight: 700, cursor: bloqueado?'not-allowed':'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              transition: 'all 0.2s', opacity: loading ? 0.8 : 1,
+              boxShadow: bloqueado ? 'none' : `0 4px 14px ${C.primary}40`,
+            }}
+          >
+            {loading ? (
+              <><RefreshCw size={16} style={{animation:'spin 1s linear infinite'}}/> Verificando...</>
+            ) : bloqueado ? (
+              <><AlertTriangle size={16}/> Aguarde {countdown}s</>
+            ) : (
+              <><Check size={16}/> Entrar no Sistema</>
+            )}
+          </button>
+
+          <div style={{textAlign:'center',marginTop:20,fontSize:11,color:C.navyLight}}>
+            © 2026 Taboca Pão & Pizza · Acesso restrito
+          </div>
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+      `}</style>
+    </div>
+  );
+};
+
 // ═══════════════════════════════════════════════════
 // MAIN APP
 // ═══════════════════════════════════════════════════
 export default function TabocaGestao() {
+  const [autenticado, setAutenticado] = useState(() => {
+    // Mantém sessão por 8 horas
+    const salvo = localStorage.getItem('taboca_auth');
+    if (!salvo) return false;
+    try {
+      const { ts } = JSON.parse(salvo);
+      return (Date.now() - ts) < 8 * 60 * 60 * 1000;
+    } catch { return false; }
+  });
   const [panel, setPanel] = useState('dashboard');
   const [data, setData] = useState(mkData);
   const [modal, setModal] = useState(null);
+
+  const handleLogin = () => {
+    localStorage.setItem('taboca_auth', JSON.stringify({ ts: Date.now() }));
+    setAutenticado(true);
+  };
+
+  if (!autenticado) return <LoginScreen onLogin={handleLogin} />;
 
   const openModal = (name) => setModal(name);
   const closeModal = () => setModal(null);

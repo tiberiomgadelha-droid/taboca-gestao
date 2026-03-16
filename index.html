@@ -2,13 +2,75 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#7B3A10" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- iOS PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Taboca" />
+    <link rel="apple-touch-icon" href="/icon-512.png" />
+
+    <!-- Mac Desktop -->
+    <meta name="application-name" content="Taboca Gestão" />
+
+    <meta name="description" content="Sistema de Gestão — Taboca Pão e Pizza" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
     <title>Taboca Gestão</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <style>* { margin:0; padding:0; box-sizing:border-box; } body { font-family: 'Montserrat', sans-serif; }</style>
+
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        font-family: 'Montserrat', 'Segoe UI', sans-serif;
+        background: #FAF7F4;
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      ::-webkit-scrollbar { width: 5px; height: 5px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #D4C4B8; border-radius: 3px; }
+      #splash {
+        position: fixed; inset: 0; background: #FAF7F4;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        gap: 16px; z-index: 9999; transition: opacity 0.4s ease;
+      }
+      #splash img { width: 120px; height: 120px; object-fit: contain; }
+      #splash p { font-size: 13px; color: #A0522D; font-weight: 600; letter-spacing: 0.05em; }
+      #splash.hidden { opacity: 0; pointer-events: none; }
+    </style>
   </head>
   <body>
+    <div id="splash">
+      <img src="/Logomarca_Taboca.png" alt="Taboca" />
+      <p>Carregando sistema...</p>
+    </div>
+
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(r => console.log('SW ok:', r.scope))
+            .catch(e => console.log('SW erro:', e));
+        });
+      }
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          const s = document.getElementById('splash');
+          if (s) { s.classList.add('hidden'); setTimeout(() => s.remove(), 400); }
+        }, 800);
+      });
+    </script>
   </body>
 </html>
