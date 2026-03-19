@@ -2805,7 +2805,7 @@ export default function TabocaGestao() {
   const liveNow = useLiveClock();
   const [autenticado, setAutenticado] = useState(false);
 
-  // Supabase Auth: verificar sessao ativa ao carregar
+  // Supabase Auth: verificar sessao ativa e monitorar mudancas
   useEffect(() => {
     if (!isSupabaseReady()) return;
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -2816,13 +2816,7 @@ export default function TabocaGestao() {
     });
     return () => subscription.unsubscribe();
   }, []);
-  // Session check moved to useEffect below
-    if (!salvo) return false;
-    try {
-      const { ts } = JSON.parse(salvo);
-      return (Date.now() - ts) < 8 * 60 * 60 * 1000;
-    } catch { return false; }
-  });
+
   const [panel, setPanel] = useState('dashboard');
   const { data, setData, loading, supabaseAtivo, inserir, atualizar, deletar } = useTabocaData(mkData);
   const [modal, setModal] = useState(null);
