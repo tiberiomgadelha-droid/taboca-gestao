@@ -13,7 +13,8 @@ function getNomeTabela(n) { return ESTADO_PARA_TABELA[n] || n; }
 function getNomeEstado(n) { return TABELA_PARA_ESTADO[n] || n; }
 
 export function useTabocaData(mkData) {
-  const [data, setData] = useState(null);
+  // IMPORTANTE: inicializar com mkData() para evitar null references
+  const [data, setData] = useState(() => mkData());
   const [loading, setLoading] = useState(true);
   const [supabaseAtivo, setSupabaseAtivo] = useState(false);
   const userIdRef = useRef(null);
@@ -23,7 +24,6 @@ export function useTabocaData(mkData) {
     async function carregarDados() {
       if (!isSupabaseReady()) {
         console.log('[Taboca] Supabase nao configurado, usando dados locais');
-        setData(mkData());
         setLoading(false);
         return;
       }
@@ -31,7 +31,6 @@ export function useTabocaData(mkData) {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
           console.log('[Taboca] Sem sessao ativa, usando dados locais');
-          setData(mkData());
           setLoading(false);
           return;
         }
@@ -52,7 +51,7 @@ export function useTabocaData(mkData) {
             } else {
               const { data: rows, error } = await supabase.from(tabela).select('*').order('created_at', { ascending: true });
               if (error) throw error;
-              resultado[nomeEstado] = rows || [];
+              resultado[nomeEstado] = (rows && rows.length > 0) ? rows : mkData()[nomeEstado] || [];
             }
           } catch (err) {
             console.warn('[Taboca] Erro ao carregar ' + tabela + ':', err.message);
@@ -68,7 +67,7 @@ export function useTabocaData(mkData) {
         }
       } catch (err) {
         console.error('[Taboca] Erro geral:', err);
-        if (!cancelado) { setData(mkData()); setLoading(false); }
+        if (!cancelado) { setLoading(false); }
       }
     }
     carregarDados();
