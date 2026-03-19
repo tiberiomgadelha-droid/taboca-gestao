@@ -2612,10 +2612,10 @@ const ModalDefinirMeta = ({open, onClose, data, setData}) => {
 // ═══════════════════════════════════════════════════
 // LOGIN SCREEN
 // ═══════════════════════════════════════════════════
-const CREDENTIALS = { usuario: 'Tiberio', senha: btoa('210261') };
+// CREDENTIALS removed - using Supabase Auth (Fase 3 Eixo 2)
 
 const LoginScreen = ({ onLogin }) => {
-  const [usuario, setUsuario] = useState('');
+  const [usuario, setE-mail] = useState('');
   const [senha, setSenha] = useState('');
   const [erro, setErro] = useState('');
   const [loading, setLoading] = useState(false);
@@ -2636,33 +2636,23 @@ const LoginScreen = ({ onLogin }) => {
     }
   }, [bloqueado, countdown]);
 
-  const handleLogin = () => {
-    if (bloqueado) return;
-    if (!usuario.trim() || !senha.trim()) {
-      setErro('Preencha usuário e senha.');
-      return;
-    }
-    setLoading(true);
-    setTimeout(() => {
-      const senhaCorreta = btoa(senha) === CREDENTIALS.senha;
-      const usuarioCorreto = usuario.trim().toLowerCase() === CREDENTIALS.usuario.toLowerCase();
-      if (usuarioCorreto && senhaCorreta) {
-        setErro('');
-        onLogin();
-      } else {
-        const novasTentativas = tentativas + 1;
-        setTentativas(novasTentativas);
-        if (novasTentativas >= 3) {
-          setBloqueado(true);
-          setCountdown(30);
-          setErro('Muitas tentativas incorretas. Aguarde 30 segundos.');
+  const handleLogin = async () => {
+      if (!form.email || !form.senha) { setErro('Preencha todos os campos'); return; }
+      setCarregando(true);
+      setErro('');
+      try {
+        const { error } = await supabase.auth.signInWithPassword({ email: form.email, password: form.senha });
+        if (error) {
+          const novasTentativas = tentativas + 1;
+          setTentativas(novasTentativas);
+          if (novasTentativas >= 5) { setErro('Muitas tentativas. Aguarde 5 minutos.'); }
+          else { setErro('E-mail ou senha incorretos (' + novasTentativas + '/5)'); }
         } else {
-          setErro(`Usuário ou senha incorretos. Tentativa ${novasTentativas}/3.`);
+          onLogin();
         }
-      }
-      setLoading(false);
-    }, 700);
-  };
+      } catch (err) { setErro('Erro de conexao. Tente novamente.'); }
+      setCarregando(false);
+    }
 
   return (
     <div style={{
@@ -2703,16 +2693,16 @@ const LoginScreen = ({ onLogin }) => {
           <div style={{fontSize:15,fontWeight:700,color:C.navy,marginBottom:6}}>Bem-vindo, Tiba! 👋</div>
           <div style={{fontSize:12,color:C.navyLight,marginBottom:24}}>Faça login para acessar o painel.</div>
 
-          {/* Usuário */}
+          {/* E-mail */}
           <div style={{marginBottom:16}}>
-            <label style={{...s.label}}>Usuário</label>
+            <label style={{...s.label}}>E-mail</label>
             <div style={{position:'relative'}}>
               <div style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)'}}>
                 <Users size={16} color={C.navyLight}/>
               </div>
               <input
                 value={usuario}
-                onChange={e=>{setUsuario(e.target.value);setErro('');}}
+                onChange={e=>{setE-mail(e.target.value);setErro('');}}
                 onKeyDown={e=>e.key==='Enter'&&handleLogin()}
                 placeholder="Digite seu usuário"
                 disabled={bloqueado}
@@ -2813,8 +2803,20 @@ const LoginScreen = ({ onLogin }) => {
 export default function TabocaGestao() {
   const isMobile = useIsMobile();
   const liveNow = useLiveClock();
-  const [autenticado, setAutenticado] = useState(() => {
-    const salvo = localStorage.getItem('taboca_auth');
+  const [autenticado, setAutenticado] = useState(false);
+
+  // Supabase Auth: verificar sessao ativa ao carregar
+  useEffect(() => {
+    if (!isSupabaseReady()) return;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setAutenticado(!!session);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAutenticado(!!session);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+  // Session check moved to useEffect below
     if (!salvo) return false;
     try {
       const { ts } = JSON.parse(salvo);
@@ -2827,15 +2829,12 @@ export default function TabocaGestao() {
   const [busca, setBusca] = useState('');
   const [buscaAberta, setBuscaAberta] = useState(false);
 
-  const handleLogin = () => {
-    localStorage.setItem('taboca_auth', JSON.stringify({ ts: Date.now() }));
-    setAutenticado(true);
-  };
+  const handleLogin = () => { setAutenticado(true); }
 
-  const handleLogout = () => {
-    localStorage.removeItem('taboca_auth');
+  const handleLogout = async () => {
+    if (isSupabaseReady()) { await supabase.auth.signOut(); }
     setAutenticado(false);
-  };
+  }
 
   // Verificar regressão de clientes fixos ao montar
   useEffect(() => {
