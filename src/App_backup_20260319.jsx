@@ -104,14 +104,14 @@ const mkData = () => ({
     { id:4, produto_id:4, valor_venda_unitario:55.00, custo_material:12.00, custo_mao_obra:5.00, custo_bruto_producao:17.00, margem_lucro:69.1, modo_preparo:'Massa de pizza de longa fermentação (48h). Molho artesanal de tomate pelado. Cobrir com mussarela frescal fatiada. Decorar com folhas de manjericão fresco. Assar em forno a 300°C por 12-15min.', peso_cru:500, peso_pronto:420, percentual_perda:16 },
   ],
   producoes: [
-    { id:1, data:'2026-03-12', produto_id:1, quantidade:20, operador:'Tiberio Gadelha', observacao:'Fornada quarta-feira - todos vendidos', pago_colaborador:false },
-    { id:2, data:'2026-03-12', produto_id:2, quantidade:10, operador:'Tiberio Gadelha', observacao:'Fornada quarta-feira', pago_colaborador:false },
-    { id:3, data:'2026-03-12', produto_id:3, quantidade:8, operador:'Tiberio Gadelha', observacao:'Fornada quarta-feira', pago_colaborador:false },
-    { id:4, data:'2026-03-07', produto_id:4, quantidade:6, operador:'Tiberio Gadelha', observacao:'Fornada sexta-feira - pizzas', pago_colaborador:false },
-    { id:5, data:'2026-03-07', produto_id:1, quantidade:15, operador:'Tiberio Gadelha', observacao:'Fornada sexta-feira', pago_colaborador:false },
-    { id:6, data:'2026-03-07', produto_id:5, quantidade:4, operador:'Tiberio Gadelha', observacao:'Fornada sexta-feira - pizzas', pago_colaborador:false },
-    { id:7, data:'2026-02-26', produto_id:1, quantidade:18, operador:'Tiberio Gadelha', observacao:'Fornada quarta-feira', pago_colaborador:false },
-    { id:8, data:'2026-02-26', produto_id:3, quantidade:6, operador:'Tiberio Gadelha', observacao:'Fornada quarta-feira', pago_colaborador:false },
+    { id:1, data:'2026-03-12', produto_id:1, quantidade:20, operador:'Tiberio', observacao:'Fornada quarta-feira - todos vendidos' },
+    { id:2, data:'2026-03-12', produto_id:2, quantidade:10, operador:'Tiberio', observacao:'Fornada quarta-feira' },
+    { id:3, data:'2026-03-12', produto_id:3, quantidade:8, operador:'Tiberio', observacao:'Fornada quarta-feira' },
+    { id:4, data:'2026-03-07', produto_id:4, quantidade:6, operador:'Tiberio', observacao:'Fornada sexta-feira - pizzas' },
+    { id:5, data:'2026-03-07', produto_id:1, quantidade:15, operador:'Tiberio', observacao:'Fornada sexta-feira' },
+    { id:6, data:'2026-03-07', produto_id:5, quantidade:4, operador:'Tiberio', observacao:'Fornada sexta-feira - pizzas' },
+    { id:7, data:'2026-02-26', produto_id:1, quantidade:18, operador:'Tiberio', observacao:'Fornada quarta-feira' },
+    { id:8, data:'2026-02-26', produto_id:3, quantidade:6, operador:'Tiberio', observacao:'Fornada quarta-feira' },
   ],
   clientes: [
     { id:1, nome:'Selva / Jovanka', whatsapp:'55 (73) 99999-1111', instagram:'@selva.jovanka', endereco_completo:'Rua das Flores, 123, Bairro Novo, Ilhéus-BA', localidade_id:1, link_googlemaps:'https://maps.google.com', foto_fachada_url:null, preferencias:'Bambuguette, sem sal extra', data_cadastro:'2026-01-15', grupo_id:3 },
@@ -656,25 +656,11 @@ const PanelDashboard = ({data, setPanel, openModal, now, setData}) => {
 const PanelContabilidade = ({data, setData, openModal}) => {
   const [tab, setTab] = useState('relatorios');
   const TABS = [{key:'relatorios',label:'Relatórios Gerenciais',icon:BarChart2},{key:'fluxo',label:'Fluxo de Caixa',icon:RefreshCw},{key:'contas',label:'Plano de Contas',icon:Wallet},{key:'balanco',label:'Balanço Patrimonial',icon:Building},{key:'colaboradores',label:'Pagto. Colaboradores',icon:Users}];
-
-  // ── Helpers de período ──
-  const getMesStr = (d) => d.slice(0,7);
-  const mesAtual = '2026-03';
-  const meses6 = ['2025-10','2025-11','2025-12','2026-01','2026-02','2026-03'];
-  const mesesLabel = ['Out','Nov','Dez','Jan','Fev','Mar'];
-  const transDoMes = (m) => data.transactions.filter(t=>getMesStr(t.data)===m);
-
-  const mesTrans = transDoMes(mesAtual);
+  
+  const mesTrans = data.transactions.filter(t=>t.data.startsWith('2026-03'));
   const receita = mesTrans.filter(t=>t.tipo==='receita').reduce((a,t)=>a+t.valor,0);
   const despesa = mesTrans.filter(t=>t.tipo==='despesa').reduce((a,t)=>a+t.valor,0);
   const lucro = receita - despesa;
-
-  // Receita/despesa do mês anterior para comparativos
-  const mesAntTrans = transDoMes('2026-02');
-  const receitaAnt = mesAntTrans.filter(t=>t.tipo==='receita').reduce((a,t)=>a+t.valor,0);
-  const despesaAnt = mesAntTrans.filter(t=>t.tipo==='despesa').reduce((a,t)=>a+t.valor,0);
-  const lucroAnt = receitaAnt - despesaAnt;
-  const pctVar = (atual,ant) => ant>0 ? (((atual-ant)/ant)*100).toFixed(1) : atual>0?'100.0':'0.0';
 
   const [margFilter, setMargFilter] = useState('todos');
   const fichasFiltradas = data.fichas.filter(f=>{
@@ -682,213 +668,28 @@ const PanelContabilidade = ({data, setData, openModal}) => {
     return !prod||margFilter==='todos'||prod.categoria===margFilter;
   });
 
-  // ── Plano de Contas (carteiras) ──
-  const CARTEIRAS_RECEITA = ['Caixa','PIX','Cartão'];
-  const CARTEIRAS_DESPESA = [
-    {nome:'Impostos e Taxas',desc:'MEI, ICMS, taxas'},
-    {nome:'Percas e Prejuízos',desc:'Produtos vencidos, avarias'},
-    {nome:'Custo Insumos',desc:'Farinha, ovos, gás etc'},
-    {nome:'Custo Serviço',desc:'Colaboradores, frete, entregas'},
-    {nome:'Custo Administrativo',desc:'Aluguel, internet, contador'},
-    {nome:'Custo Marketing',desc:'Anúncios, embalagens, domínio'},
-    {nome:'Investimento',desc:'Equipamentos, reforma, capacitação'},
+  const despCat = {};
+  mesTrans.filter(t=>t.tipo==='despesa').forEach(t=>{despCat[t.categoria]=(despCat[t.categoria]||0)+t.valor;});
+  const pieDesp = Object.entries(despCat).map(([name,value])=>({name,value}));
+  const pieColors = [C.primary,C.amber,C.red,C.blue,C.purple,'#10B981'];
+
+  // Monthly chart data
+  const monthlyData = [
+    {name:'Out',receita:120,despesa:80},{name:'Nov',receita:180,despesa:120},{name:'Dez',receita:350,despesa:200},
+    {name:'Jan',receita:280,despesa:180},{name:'Fev',receita:320,despesa:210},{name:'Mar',receita:receita,despesa:despesa},
   ];
 
-  // Mapeamento de categorias existentes para as novas carteiras de despesa
-  const mapCatCarteira = (cat) => {
-    if(!cat) return 'Custo Administrativo';
-    const c = cat.toLowerCase();
-    if(c.includes('imposto')||c.includes('taxa')||c.includes('mei')) return 'Impostos e Taxas';
-    if(c.includes('perda')||c.includes('prejuízo')||c.includes('vencid')||c.includes('avaria')) return 'Percas e Prejuízos';
-    if(c.includes('insumo')||c.includes('farinha')||c.includes('ovo')||c==='insumos') return 'Custo Insumos';
-    if(c.includes('serviço')||c.includes('colaborad')||c.includes('frete')||c.includes('salário')||c.includes('salarios')||c==='custo de produção') return 'Custo Serviço';
-    if(c.includes('admin')||c.includes('aluguel')||c.includes('internet')||c.includes('manutenção')) return 'Custo Administrativo';
-    if(c.includes('marketing')||c.includes('anúncio')||c.includes('embalagem')||c.includes('domínio')) return 'Custo Marketing';
-    if(c.includes('investimento')||c.includes('equipamento')||c.includes('reforma')) return 'Investimento';
-    return 'Custo Administrativo';
-  };
-
-  const despCat = {};
-  mesTrans.filter(t=>t.tipo==='despesa').forEach(t=>{
-    const cart = mapCatCarteira(t.categoria);
-    despCat[cart]=(despCat[cart]||0)+t.valor;
-  });
-  const pieDesp = Object.entries(despCat).map(([name,value])=>({name,value}));
-  const pieColors = [C.primary,C.amber,C.red,C.blue,C.purple,'#10B981','#F59E0B'];
-
-  // ── Monthly chart data (últimos 6 meses) ──
-  const monthlyData = meses6.map((m,i) => {
-    const tr = transDoMes(m);
-    return {name:mesesLabel[i], receita:tr.filter(t=>t.tipo==='receita').reduce((a,t)=>a+t.valor,0), despesa:tr.filter(t=>t.tipo==='despesa').reduce((a,t)=>a+t.valor,0)};
-  });
-
-  // ── Filtros do Fluxo de Caixa (TAREFA 1) ──
-  const [fluxoFiltros, setFluxoFiltros] = useState({dataInicio:'',dataFim:'',tipo:'todos',conta:'todas',categoria:'todas',busca:''});
-  const todasCategorias = [...new Set(data.transactions.map(t=>t.categoria))].sort();
-  const transacoesFiltradas = useMemo(()=>{
-    let arr = [...data.transactions];
-    const f = fluxoFiltros;
-    if(f.dataInicio) arr = arr.filter(t=>t.data>=f.dataInicio);
-    if(f.dataFim) arr = arr.filter(t=>t.data<=f.dataFim+'T23:59');
-    if(f.tipo!=='todos') arr = arr.filter(t=>t.tipo===f.tipo);
-    if(f.conta!=='todas') arr = arr.filter(t=>t.conta===f.conta);
-    if(f.categoria!=='todas') arr = arr.filter(t=>t.categoria===f.categoria);
-    if(f.busca) { const b=f.busca.toLowerCase(); arr = arr.filter(t=>t.descricao.toLowerCase().includes(b)); }
-    return arr;
-  },[data.transactions,fluxoFiltros]);
-  const fluxoReceitaFiltrada = transacoesFiltradas.filter(t=>t.tipo==='receita').reduce((a,t)=>a+t.valor,0);
-  const fluxoDespesaFiltrada = transacoesFiltradas.filter(t=>t.tipo==='despesa').reduce((a,t)=>a+t.valor,0);
-  const fluxoSaldoFiltrado = fluxoReceitaFiltrada - fluxoDespesaFiltrada;
-  const limparFiltros = () => setFluxoFiltros({dataInicio:'',dataFim:'',tipo:'todos',conta:'todas',categoria:'todas',busca:''});
-
-  // ── Balanço Patrimonial dinâmico (TAREFA 3) ──
-  const calcSaldoConta = (nomeConta) => {
-    const conta = data.settings.contas.find(c=>c.nome.includes(nomeConta));
-    if(!conta) return 0;
-    const entradas = data.transactions.filter(t=>t.conta===conta.nome&&t.tipo==='receita').reduce((a,t)=>a+t.valor,0);
-    const saidas = data.transactions.filter(t=>t.conta===conta.nome&&t.tipo==='despesa').reduce((a,t)=>a+t.valor,0);
-    return conta.saldo_inicial + entradas - saidas;
-  };
-  const saldoCaixa = calcSaldoConta('Caixa');
-  const saldoPIX = calcSaldoConta('PIX');
-  const saldoCartao = calcSaldoConta('Corrente');
-  const totalCaixa = saldoCaixa + saldoPIX + saldoCartao;
-  const valorEstoque = data.produtos.reduce((a,p)=>a+(p.valor_unitario*p.quantidade),0) + data.insumos.reduce((a,i)=>a+(i.valor_unitario*i.quantidade),0);
-  const totalBens = (data.bens||[]).reduce((a,b)=>a+b.valor,0);
-  const contasReceber = data.pedidos.filter(p=>!p.pagamento_confirmado&&p.status_entrega!=='cancelado').reduce((a,p)=>a+p.valor_total,0);
-  const totalAtivos = totalCaixa + valorEstoque + totalBens + contasReceber;
-  const impostosPagar = mesTrans.filter(t=>t.tipo==='despesa'&&mapCatCarteira(t.categoria)==='Impostos e Taxas').reduce((a,t)=>a+t.valor,0);
-  const totalReceitas = data.transactions.filter(t=>t.tipo==='receita').reduce((a,t)=>a+t.valor,0);
-  const totalDespesas = data.transactions.filter(t=>t.tipo==='despesa').reduce((a,t)=>a+t.valor,0);
-  const lucroAcumulado = totalReceitas - totalDespesas;
-  const patrimonioLiq = data.settings.capital_social + lucroAcumulado;
-
-  // ── DRE simplificado ──
-  const receitaBruta = receita;
-  const deducoes = mesTrans.filter(t=>t.tipo==='despesa'&&mapCatCarteira(t.categoria)==='Impostos e Taxas').reduce((a,t)=>a+t.valor,0);
-  const receitaLiquida = receitaBruta - deducoes;
-  const cpv = mesTrans.filter(t=>t.tipo==='despesa'&&['Custo Insumos','Custo Serviço'].includes(mapCatCarteira(t.categoria))).reduce((a,t)=>a+t.valor,0);
-  const lucroBruto = receitaLiquida - cpv;
-  const despOp = mesTrans.filter(t=>t.tipo==='despesa'&&['Custo Administrativo','Custo Marketing'].includes(mapCatCarteira(t.categoria))).reduce((a,t)=>a+t.valor,0);
-  const ebitda = lucroBruto - despOp;
-  const impostosTotal = deducoes;
-  const lucroLiquido = ebitda - impostosTotal;
-  const margemEbitda = receitaBruta>0 ? ((ebitda/receitaBruta)*100).toFixed(1) : '0.0';
-
-  // EBITDA por mês
-  const ebitdaMensal = meses6.map((m,i) => {
-    const tr = transDoMes(m);
-    const rec = tr.filter(t=>t.tipo==='receita').reduce((a,t)=>a+t.valor,0);
-    const desp = tr.filter(t=>t.tipo==='despesa').reduce((a,t)=>a+t.valor,0);
-    const imp = tr.filter(t=>t.tipo==='despesa'&&mapCatCarteira(t.categoria)==='Impostos e Taxas').reduce((a,t)=>a+t.valor,0);
-    const cv = tr.filter(t=>t.tipo==='despesa'&&['Custo Insumos','Custo Serviço'].includes(mapCatCarteira(t.categoria))).reduce((a,t)=>a+t.valor,0);
-    const op = tr.filter(t=>t.tipo==='despesa'&&['Custo Administrativo','Custo Marketing'].includes(mapCatCarteira(t.categoria))).reduce((a,t)=>a+t.valor,0);
-    const eb = (rec-imp) - cv - op;
-    return {name:mesesLabel[i],receita:rec,despesa:desp,ebitda:eb};
-  });
-
-  // Projeção de faturamento
-  const diasPassados = new Date().getDate();
-  const projecaoFaturamento = diasPassados>0 ? (receita/diasPassados)*30 : 0;
-
-  // ── Ponto de equilíbrio ──
-  const despFixasMes = mesTrans.filter(t=>t.tipo==='despesa'&&['Custo Administrativo','Impostos e Taxas','Custo Marketing'].includes(mapCatCarteira(t.categoria))).reduce((a,t)=>a+t.valor,0);
-
-  // ── Colaboradores state (TAREFA 4) ──
-  const [editColab, setEditColab] = useState(null);
-  const [confirmDeleteColab, setConfirmDeleteColab] = useState(null);
-  const [confirmPagColab, setConfirmPagColab] = useState(null);
-  const emptyColab = {nome:'',funcao:'',email:'',whatsapp:'',foto_url:'',valor_por_fornada:'',valor_acumulado:0,ativo:true};
-
-  // Calcular valor acumulado de serviço para cada colaborador baseado em produções não pagas
-  const calcValorAcumulado = (col) => {
-    const producoesDoColab = data.producoes.filter(p=>p.operador===col.nome && !p.pago_colaborador);
-    // Para cada produção, buscar a ficha técnica do produto e pegar custo_mao_obra
-    return producoesDoColab.reduce((total, prod) => {
-      const ficha = data.fichas.find(f=>f.produto_id===prod.produto_id);
-      const custoMO = ficha ? ficha.custo_mao_obra * prod.quantidade : (col.valor_por_fornada || 0);
-      return total + custoMO;
-    }, 0);
-  };
-
-  const saveColab = () => {
-    if(!editColab||!editColab.nome||!editColab.funcao) return;
-    const isNew = !data.colaboradores.find(c=>c.id===editColab.id);
-    if(isNew) {
-      setData(prev=>({...prev,colaboradores:[...prev.colaboradores,{...editColab,id:Date.now(),valor_acumulado:0}]}));
-      logActivity(setData,'colaborador',`Novo colaborador: ${editColab.nome}`);
-    } else {
-      setData(prev=>({...prev,colaboradores:prev.colaboradores.map(c=>c.id===editColab.id?editColab:c)}));
-    }
-    setEditColab(null);
-  };
-  const deleteColab = (id) => {
-    setData(prev=>({...prev,colaboradores:prev.colaboradores.filter(c=>c.id!==id)}));
-    setConfirmDeleteColab(null);
-  };
-  // Lançar pagamento: gera despesa financeira + zera produções do colaborador
-  const lancarPagamento = (col) => {
-    const valorAcum = calcValorAcumulado(col);
-    if(valorAcum <= 0) return;
-    const transacao = {
-      id: Date.now(),
-      descricao: `Pagamento colaborador — ${col.nome}`,
-      data: new Date().toISOString().slice(0,16),
-      conta: 'PIX',
-      categoria: 'Custo de Produção',
-      tipo: 'despesa',
-      valor: valorAcum
-    };
-    setData(prev=>({
-      ...prev,
-      transactions: [transacao, ...prev.transactions],
-      // Marcar produções do colaborador como pagas
-      producoes: prev.producoes.map(p => p.operador===col.nome && !p.pago_colaborador ? {...p, pago_colaborador:true} : p),
-      activityLog: [{
-        id: Date.now()+1, tipo:'transacao',
-        descricao: `Pagamento ${col.nome} — ${fmtCurrency(valorAcum)}`,
-        data: new Date().toISOString(), operador:'Tiberio', icon:'despesa'
-      }, ...prev.activityLog]
-    }));
-    setConfirmPagColab(null);
-    logActivity(setData,'colaborador',`Pagamento lançado: ${col.nome} — ${fmtCurrency(valorAcum)}`);
-  };
-
   const TabContent = () => {
-    // ═════════════════════════════════════════════
-    // RELATÓRIOS GERENCIAIS
-    // ═════════════════════════════════════════════
     if(tab==='relatorios') return (
       <div>
-        <div style={{display:'flex',gap:16,marginBottom:20,flexWrap:'wrap'}}>
-          {[
-            {label:'Receita Total',val:receita,icon:TrendingUp,color:C.green,sub:parseFloat(pctVar(receita,receitaAnt))>=0?`↑ ${pctVar(receita,receitaAnt)}% vs. mês ant.`:`↓ ${Math.abs(parseFloat(pctVar(receita,receitaAnt)))}% vs. mês ant.`,up:parseFloat(pctVar(receita,receitaAnt))>=0},
-            {label:'Despesas Operacionais',val:despesa,icon:TrendingDown,color:C.red,sub:parseFloat(pctVar(despesa,despesaAnt))>=0?`↑ ${pctVar(despesa,despesaAnt)}% vs. mês ant.`:`↓ ${Math.abs(parseFloat(pctVar(despesa,despesaAnt)))}% vs. mês ant.`,up:parseFloat(pctVar(despesa,despesaAnt))>=0},
-            {label:'Lucro Líquido',val:lucro,icon:Target,color:lucro>=0?C.green:C.red,sub:`Margem de ${receita>0?((lucro/receita)*100).toFixed(0):0}%`},
-            {label:'EBITDA',val:ebitda,icon:BarChart2,color:ebitda>=0?C.green:C.red,sub:`Margem ${margemEbitda}%`}
-          ].map(({label,val,icon:Icon,color,sub,up})=>(
-            <div key={label} style={{...s.card,flex:1,minWidth:180}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
-                <div style={{fontSize:11,fontWeight:700,color:C.navyLight,textTransform:'uppercase',letterSpacing:'0.08em'}}>{label}</div>
-                <div style={{width:28,height:28,borderRadius:6,background:`${color}18`,display:'flex',alignItems:'center',justifyContent:'center'}}><Icon size={14} color={color}/></div>
-              </div>
+        <div style={{display:'flex',gap:16,marginBottom:20}}>
+          {[{label:'Receita Total',val:receita,icon:TrendingUp,color:C.green,sub:'↑0% vs. mês ant.'},{label:'Despesas Operacionais',val:despesa,icon:TrendingDown,color:C.red,sub:'↑0% vs. esperado'},{label:'Lucro Líquido',val:lucro,icon:Target,color:lucro>=0?C.green:C.red,sub:`Margem de ${receita>0?((lucro/receita)*100).toFixed(0):0}%`}].map(({label,val,icon:Icon,color,sub})=>(
+            <div key={label} style={{...s.card,flex:1}}>
+              <div style={{fontSize:11,fontWeight:700,color:C.navyLight,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}}>{label}</div>
               <div style={{fontSize:24,fontWeight:800,color:C.navy}}>{fmtCurrency(val)}</div>
-              <div style={{fontSize:11,color,marginTop:4,fontWeight:600,display:'flex',alignItems:'center',gap:4}}>
-                {up!==undefined && (up ? <ArrowUpRight size={12}/> : <ArrowDownRight size={12}/>)}
-                {sub}
-              </div>
+              <div style={{fontSize:11,color,marginTop:4,fontWeight:600}}>{sub}</div>
             </div>
           ))}
-        </div>
-        {/* Comparativo mês a mês (TAREFA 5) */}
-        <div style={{...s.card,marginBottom:16}}>
-          <div style={s.sectionTitle}>Comparativo Mensal — Receita vs Despesa (6 meses)</div>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={monthlyData}><CartesianGrid strokeDasharray="3 3" stroke={C.borderLight}/><XAxis dataKey="name" tick={{fontSize:11}}/><YAxis tick={{fontSize:11}} tickFormatter={v=>`R$${v}`}/><Tooltip formatter={v=>fmtCurrency(v)}/><Legend/>
-              <Bar dataKey="receita" name="Receita" fill={C.green} radius={[4,4,0,0]}/>
-              <Bar dataKey="despesa" name="Despesa" fill={C.red} radius={[4,4,0,0]}/>
-            </BarChart>
-          </ResponsiveContainer>
         </div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 280px',gap:16}}>
           <div style={s.card}>
@@ -922,6 +723,7 @@ const PanelContabilidade = ({data, setData, openModal}) => {
                 })}
               </tbody>
             </table>
+            <div style={{textAlign:'center',marginTop:10}}><button onClick={()=>setMargFilter('todos')} style={{border:'none',background:'none',cursor:'pointer',fontSize:12,color:C.primary,fontWeight:600}}>Ver Lista Completa ↓</button></div>
           </div>
           <div style={{display:'flex',flexDirection:'column',gap:12}}>
             <div style={s.card}>
@@ -935,15 +737,9 @@ const PanelContabilidade = ({data, setData, openModal}) => {
               <div style={{textAlign:'center',marginTop:4}}><button onClick={()=>setTab('fluxo')} style={{border:'none',background:'none',cursor:'pointer',fontSize:11,color:C.primary,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.07em'}}>Ver todo o fluxo de caixa</button></div>
             </div>
             <div style={s.card}>
-              <div style={{...s.sectionTitle,marginBottom:4}}>Ponto de Equilíbrio</div>
-              <div style={{fontSize:11,color:C.navyLight,marginBottom:8}}>Faturamento mínimo para cobrir despesas fixas</div>
-              <div style={{fontSize:20,fontWeight:800,color:C.navy}}>{fmtCurrency(despFixasMes)}</div>
-              <div style={{fontSize:11,color:receita>=despFixasMes?C.green:C.red,fontWeight:600,marginTop:4}}>{receita>=despFixasMes?'✅ Acima do ponto de equilíbrio':'⚠️ Abaixo do ponto de equilíbrio'}</div>
-            </div>
-            <div style={s.card}>
-              <div style={{...s.sectionTitle,marginBottom:8}}>Despesas por Carteira</div>
+              <div style={{...s.sectionTitle,marginBottom:8}}>Despesas por Categoria</div>
               <ResponsiveContainer width="100%" height={140}>
-                <PieChart><Pie data={pieDesp} cx="50%" cy="50%" outerRadius={60} dataKey="value" label={({name,percent})=>`${name.slice(0,10)} ${(percent*100).toFixed(0)}%`} labelLine={false} fontSize={9}>
+                <PieChart><Pie data={pieDesp} cx="50%" cy="50%" outerRadius={60} dataKey="value" label={({name,percent})=>`${name.slice(0,8)} ${(percent*100).toFixed(0)}%`} labelLine={false} fontSize={9}>
                   {pieDesp.map((_,i)=><Cell key={i} fill={pieColors[i%pieColors.length]}/>)}
                 </Pie></PieChart>
               </ResponsiveContainer>
@@ -952,18 +748,13 @@ const PanelContabilidade = ({data, setData, openModal}) => {
         </div>
       </div>
     );
-
-    // ═════════════════════════════════════════════
-    // FLUXO DE CAIXA COM FILTROS (TAREFA 1)
-    // ═════════════════════════════════════════════
     if(tab==='fluxo') return (
       <div>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-          <div style={s.sectionTitle}>Fluxo de Caixa</div>
+        <div style={{display:'flex',justifyContent:'space-between',marginBottom:16}}>
+          <div style={s.sectionTitle}>Fluxo de Caixa — Março 2026</div>
           <Btn onClick={()=>openModal('novaTransacao')} size='sm'><Plus size={13}/>Nova Transação</Btn>
         </div>
-        {/* Gráfico */}
-        <div style={{marginBottom:16,background:'#fff',border:`1px solid ${C.border}`,borderRadius:12,padding:16}}>
+        <div style={{marginBottom:20,background:'#fff',border:`1px solid ${C.border}`,borderRadius:12,padding:16}}>
           <ResponsiveContainer width="100%" height={180}>
             <AreaChart data={monthlyData}><CartesianGrid strokeDasharray="3 3" stroke={C.borderLight}/><XAxis dataKey="name" tick={{fontSize:11}}/><YAxis tick={{fontSize:11}} tickFormatter={v=>`R$${v}`}/><Tooltip formatter={v=>fmtCurrency(v)}/>
               <Area type="monotone" dataKey="receita" stroke={C.green} fill={`${C.green}20`} name="Receita" strokeWidth={2}/>
@@ -971,71 +762,11 @@ const PanelContabilidade = ({data, setData, openModal}) => {
             </AreaChart>
           </ResponsiveContainer>
         </div>
-        {/* Barra de filtros */}
-        <div style={{background:'#fff',border:`1px solid ${C.border}`,borderRadius:12,padding:'12px 16px',marginBottom:12,display:'flex',gap:10,flexWrap:'wrap',alignItems:'flex-end'}}>
-          <div style={{minWidth:130}}>
-            <label style={{...s.label,marginBottom:3}}>Data Início</label>
-            <input type="date" value={fluxoFiltros.dataInicio} onChange={e=>setFluxoFiltros(f=>({...f,dataInicio:e.target.value}))} style={{...s.input,padding:'6px 10px',fontSize:12}}/>
-          </div>
-          <div style={{minWidth:130}}>
-            <label style={{...s.label,marginBottom:3}}>Data Fim</label>
-            <input type="date" value={fluxoFiltros.dataFim} onChange={e=>setFluxoFiltros(f=>({...f,dataFim:e.target.value}))} style={{...s.input,padding:'6px 10px',fontSize:12}}/>
-          </div>
-          <div>
-            <label style={{...s.label,marginBottom:3}}>Tipo</label>
-            <div style={{display:'flex',gap:4}}>
-              {[{k:'todos',l:'Todos'},{k:'receita',l:'Receitas'},{k:'despesa',l:'Despesas'}].map(({k,l})=>(
-                <button key={k} onClick={()=>setFluxoFiltros(f=>({...f,tipo:k}))} style={{border:`1px solid ${fluxoFiltros.tipo===k?C.primary:C.border}`,background:fluxoFiltros.tipo===k?C.primary:'#fff',color:fluxoFiltros.tipo===k?'#fff':C.navyLight,borderRadius:6,padding:'6px 12px',cursor:'pointer',fontSize:11,fontWeight:600}}>{l}</button>
-              ))}
-            </div>
-          </div>
-          <div style={{minWidth:120}}>
-            <label style={{...s.label,marginBottom:3}}>Conta</label>
-            <select value={fluxoFiltros.conta} onChange={e=>setFluxoFiltros(f=>({...f,conta:e.target.value}))} style={{...s.input,padding:'6px 10px',fontSize:12}}>
-              <option value="todas">Todas</option>
-              <option value="Caixa">Caixa</option>
-              <option value="PIX">PIX</option>
-              <option value="Cartão">Cartão</option>
-            </select>
-          </div>
-          <div style={{minWidth:140}}>
-            <label style={{...s.label,marginBottom:3}}>Categoria</label>
-            <select value={fluxoFiltros.categoria} onChange={e=>setFluxoFiltros(f=>({...f,categoria:e.target.value}))} style={{...s.input,padding:'6px 10px',fontSize:12}}>
-              <option value="todas">Todas</option>
-              {todasCategorias.map(c=><option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <div style={{flex:1,minWidth:140}}>
-            <label style={{...s.label,marginBottom:3}}>Buscar</label>
-            <div style={{position:'relative'}}>
-              <Search size={13} style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',color:C.navyLight}}/>
-              <input value={fluxoFiltros.busca} onChange={e=>setFluxoFiltros(f=>({...f,busca:e.target.value}))} placeholder="Pesquisar descrição..." style={{...s.input,padding:'6px 10px 6px 28px',fontSize:12}}/>
-            </div>
-          </div>
-          <button onClick={limparFiltros} style={{border:`1px solid ${C.border}`,background:'#fff',borderRadius:6,padding:'6px 14px',cursor:'pointer',fontSize:11,fontWeight:600,color:C.navyLight,display:'flex',alignItems:'center',gap:4,height:34}}><X size={12}/>Limpar</button>
-        </div>
-        {/* Totalizadores dinâmicos */}
-        <div style={{display:'flex',gap:12,marginBottom:16}}>
-          <div style={{...s.cardSm,flex:1,display:'flex',alignItems:'center',gap:10}}>
-            <div style={{width:32,height:32,borderRadius:8,background:C.greenLight,display:'flex',alignItems:'center',justifyContent:'center'}}><TrendingUp size={16} color={C.green}/></div>
-            <div><div style={{fontSize:10,fontWeight:700,color:C.navyLight,textTransform:'uppercase'}}>Receitas</div><div style={{fontSize:18,fontWeight:800,color:C.green}}>{fmtCurrency(fluxoReceitaFiltrada)}</div></div>
-          </div>
-          <div style={{...s.cardSm,flex:1,display:'flex',alignItems:'center',gap:10}}>
-            <div style={{width:32,height:32,borderRadius:8,background:C.redLight,display:'flex',alignItems:'center',justifyContent:'center'}}><TrendingDown size={16} color={C.red}/></div>
-            <div><div style={{fontSize:10,fontWeight:700,color:C.navyLight,textTransform:'uppercase'}}>Despesas</div><div style={{fontSize:18,fontWeight:800,color:C.red}}>{fmtCurrency(fluxoDespesaFiltrada)}</div></div>
-          </div>
-          <div style={{...s.cardSm,flex:1,display:'flex',alignItems:'center',gap:10}}>
-            <div style={{width:32,height:32,borderRadius:8,background:fluxoSaldoFiltrado>=0?C.greenLight:C.redLight,display:'flex',alignItems:'center',justifyContent:'center'}}><DollarSign size={16} color={fluxoSaldoFiltrado>=0?C.green:C.red}/></div>
-            <div><div style={{fontSize:10,fontWeight:700,color:C.navyLight,textTransform:'uppercase'}}>Saldo</div><div style={{fontSize:18,fontWeight:800,color:fluxoSaldoFiltrado>=0?C.green:C.red}}>{fmtCurrency(fluxoSaldoFiltrado)}</div></div>
-          </div>
-        </div>
-        {/* Tabela de transações */}
         <div style={{background:'#fff',border:`1px solid ${C.border}`,borderRadius:12,overflow:'hidden'}}>
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
             <thead style={{background:'#F9F6F4'}}><tr>{['Data','Descrição','Conta','Categoria','Tipo','Valor'].map(h=><th key={h} style={{textAlign:'left',padding:'10px 14px',fontSize:11,fontWeight:700,color:C.navyLight,textTransform:'uppercase',letterSpacing:'0.07em'}}>{h}</th>)}</tr></thead>
             <tbody>
-              {transacoesFiltradas.length===0 && <tr><td colSpan={6} style={{padding:20,textAlign:'center',color:C.navyLight,fontSize:13}}>Nenhuma transação encontrada com os filtros aplicados.</td></tr>}
-              {transacoesFiltradas.map(t=>(
+              {data.transactions.map(t=>(
                 <tr key={t.id} style={{borderBottom:`1px solid ${C.borderLight}`}}>
                   <td style={{padding:'10px 14px',color:C.navyLight,fontSize:12}}>{fmtDate(t.data)}</td>
                   <td style={{padding:'10px 14px',fontWeight:600,color:C.navy}}>{t.descricao}</td>
@@ -1047,238 +778,77 @@ const PanelContabilidade = ({data, setData, openModal}) => {
               ))}
             </tbody>
           </table>
-          <div style={{padding:'8px 14px',fontSize:11,color:C.navyLight,borderTop:`1px solid ${C.borderLight}`}}>{transacoesFiltradas.length} transação(ões) encontrada(s)</div>
         </div>
       </div>
     );
-
-    // ═════════════════════════════════════════════
-    // PLANO DE CONTAS (TAREFA 2)
-    // ═════════════════════════════════════════════
-    if(tab==='contas') {
-      const totalReceitaMes = mesTrans.filter(t=>t.tipo==='receita').reduce((a,t)=>a+t.valor,0);
-      const totalDespesaMes = despesa;
-      return (
-        <div>
-          <div style={{...s.sectionTitle,marginBottom:4}}>Plano de Contas</div>
-          <div style={{fontSize:12,color:C.navyLight,marginBottom:20}}>Carteiras organizadas por tipo — Março 2026</div>
-
-          {/* CARTEIRAS DE RECEITA */}
-          <div style={{marginBottom:24}}>
-            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}><div style={{width:24,height:24,borderRadius:6,background:C.greenLight,display:'flex',alignItems:'center',justifyContent:'center'}}><TrendingUp size={13} color={C.green}/></div><span style={{fontSize:13,fontWeight:700,color:C.navy}}>Carteiras de Receita</span><span style={{fontSize:11,color:C.navyLight}}>— Total: {fmtCurrency(totalReceitaMes)}</span></div>
-            <div style={{display:'flex',gap:14,flexWrap:'wrap'}}>
-              {CARTEIRAS_RECEITA.map(nome=>{
-                const total = mesTrans.filter(t=>t.tipo==='receita'&&t.conta===nome).reduce((a,t)=>a+t.valor,0);
-                const pct = totalReceitaMes>0?((total/totalReceitaMes)*100).toFixed(1):'0.0';
-                return <div key={nome} onClick={()=>{setTab('fluxo');setFluxoFiltros(f=>({...f,conta:nome,tipo:'receita'}));}} style={{...s.card,flex:1,minWidth:180,cursor:'pointer',transition:'box-shadow 0.2s',borderLeft:`4px solid ${C.green}`}} onMouseEnter={e=>e.currentTarget.style.boxShadow='0 4px 16px rgba(0,0,0,0.08)'} onMouseLeave={e=>e.currentTarget.style.boxShadow='none'}>
-                  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}><Wallet size={15} color={C.green}/><span style={{fontWeight:700,color:C.navy,fontSize:13}}>{nome}</span></div>
-                  <div style={{fontSize:22,fontWeight:800,color:C.navy}}>{fmtCurrency(total)}</div>
-                  <div style={{display:'flex',alignItems:'center',gap:6,marginTop:6}}>
-                    <div style={{flex:1,height:4,background:C.borderLight,borderRadius:2}}><div style={{height:4,width:`${Math.min(parseFloat(pct),100)}%`,background:C.green,borderRadius:2}}/></div>
-                    <span style={{fontSize:11,fontWeight:600,color:C.green}}>{pct}%</span>
-                  </div>
-                </div>;
-              })}
-            </div>
-          </div>
-
-          {/* CARTEIRAS DE DESPESA */}
-          <div style={{marginBottom:24}}>
-            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}><div style={{width:24,height:24,borderRadius:6,background:C.redLight,display:'flex',alignItems:'center',justifyContent:'center'}}><TrendingDown size={13} color={C.red}/></div><span style={{fontSize:13,fontWeight:700,color:C.navy}}>Carteiras de Despesa</span><span style={{fontSize:11,color:C.navyLight}}>— Total: {fmtCurrency(totalDespesaMes)}</span></div>
-            <div style={{display:'flex',gap:14,flexWrap:'wrap'}}>
-              {CARTEIRAS_DESPESA.map(({nome,desc})=>{
-                const total = mesTrans.filter(t=>t.tipo==='despesa'&&mapCatCarteira(t.categoria)===nome).reduce((a,t)=>a+t.valor,0);
-                const pct = totalDespesaMes>0?((total/totalDespesaMes)*100).toFixed(1):'0.0';
-                return <div key={nome} onClick={()=>{setTab('fluxo');setFluxoFiltros(f=>({...f,tipo:'despesa',busca:'',categoria:'todas',conta:'todas'}));}} style={{...s.card,minWidth:200,flex:'1 1 200px',cursor:'pointer',transition:'box-shadow 0.2s',borderLeft:`4px solid ${C.red}`}} onMouseEnter={e=>e.currentTarget.style.boxShadow='0 4px 16px rgba(0,0,0,0.08)'} onMouseLeave={e=>e.currentTarget.style.boxShadow='none'}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
-                    <div><div style={{fontWeight:700,color:C.navy,fontSize:12}}>{nome}</div><div style={{fontSize:10,color:C.navyLight}}>{desc}</div></div>
-                  </div>
-                  <div style={{fontSize:18,fontWeight:800,color:total>0?C.red:C.navy}}>{fmtCurrency(total)}</div>
-                  <div style={{display:'flex',alignItems:'center',gap:6,marginTop:6}}>
-                    <div style={{flex:1,height:4,background:C.borderLight,borderRadius:2}}><div style={{height:4,width:`${Math.min(parseFloat(pct),100)}%`,background:C.red,borderRadius:2}}/></div>
-                    <span style={{fontSize:11,fontWeight:600,color:C.red}}>{pct}%</span>
-                  </div>
-                </div>;
-              })}
-            </div>
-          </div>
-
-          {/* PieChart distribuição despesas */}
-          <div style={{...s.card}}>
-            <div style={s.sectionTitle}>Distribuição de Despesas por Carteira</div>
-            <ResponsiveContainer width="100%" height={260}>
-              <PieChart><Pie data={pieDesp} cx="50%" cy="50%" outerRadius={100} innerRadius={50} dataKey="value" label={({name,percent})=>`${name} ${(percent*100).toFixed(0)}%`} labelLine={true} fontSize={11}>
-                {pieDesp.map((_,i)=><Cell key={i} fill={pieColors[i%pieColors.length]}/>)}
-              </Pie><Tooltip formatter={v=>fmtCurrency(v)}/></PieChart>
-            </ResponsiveContainer>
-          </div>
+    if(tab==='contas') return (
+      <div>
+        <div style={s.sectionTitle}>Plano de Contas</div>
+        <div style={{display:'flex',gap:16,flexWrap:'wrap'}}>
+          {data.settings.contas.map(conta=>{
+            const entradas = data.transactions.filter(t=>t.conta===conta.nome&&t.tipo==='receita').reduce((a,t)=>a+t.valor,0);
+            const saidas = data.transactions.filter(t=>t.conta===conta.nome&&t.tipo==='despesa').reduce((a,t)=>a+t.valor,0);
+            const saldo = conta.saldo_inicial + entradas - saidas;
+            return <div key={conta.id} style={{...s.card,minWidth:200,flex:1}}>
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}><Wallet size={16} color={C.primary}/><span style={{fontWeight:700,color:C.navy}}>{conta.nome}</span></div>
+              <div style={{fontSize:22,fontWeight:800,color:saldo>=0?C.navy:C.red}}>{fmtCurrency(saldo)}</div>
+              <div style={{fontSize:11,color:C.navyLight,marginTop:6}}>Entradas: <strong style={{color:C.green}}>{fmtCurrency(entradas)}</strong> / Saídas: <strong style={{color:C.red}}>{fmtCurrency(saidas)}</strong></div>
+            </div>;
+          })}
         </div>
-      );
-    }
-
-    // ═════════════════════════════════════════════
-    // BALANÇO PATRIMONIAL + DRE + EBITDA (TAREFA 3)
-    // ═════════════════════════════════════════════
+      </div>
+    );
     if(tab==='balanco') {
+      const totalAtivo = 431.89 + 54 + 1816;
+      const pl = data.settings.capital_social + (receita-despesa) - data.settings.capital_social;
       return (
         <div>
           <div style={{...s.card,marginBottom:16}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <div><div style={{fontSize:16,fontWeight:800,color:C.navy}}>Balanço Patrimonial — Março 2026</div><div style={{fontSize:11,color:C.navyLight}}>Demonstrativo completo da situação patrimonial, DRE e EBITDA.</div></div>
+              <div><div style={{fontSize:16,fontWeight:800,color:C.navy}}>Status de Março, 2026</div><div style={{fontSize:11,color:C.navyLight}}>Relatório demonstrativo simplificado da situação patrimonial.</div></div>
+              <div style={{display:'flex',alignItems:'center',gap:8}}><ChevronLeft size={16} color={C.navyLight} style={{cursor:'pointer'}}/><span style={{fontSize:12,fontWeight:600,color:C.navy}}>Março 2026</span><ChevronRight size={16} color={C.navyLight} style={{cursor:'pointer'}}/></div>
             </div>
           </div>
-
-          {/* BALANÇO PATRIMONIAL */}
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:20}}>
-            {/* ATIVOS */}
-            <div style={{...s.card,padding:0,overflow:'hidden'}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 18px',borderBottom:`1px solid ${C.border}`,background:'#F0FDF4'}}>
-                <span style={{fontWeight:800,color:C.green,fontSize:13}}>ATIVO</span><span style={{fontSize:10,fontWeight:700,color:C.navyLight,letterSpacing:'0.1em'}}>RECURSOS</span>
-              </div>
-              <div style={{padding:'12px 18px'}}>
-                {[
-                  {label:'Caixa em Dinheiro',valor:saldoCaixa},{label:'PIX / Conta Digital',valor:saldoPIX},{label:'Conta Corrente',valor:saldoCartao},
-                  {label:'Subtotal Caixa e Equivalentes',valor:totalCaixa,bold:true},
-                  {label:'Estoque (Produtos + Insumos)',valor:valorEstoque},
-                  {label:'Contas a Receber (Pedidos)',valor:contasReceber},
-                  {label:'Equipamentos e Bens',valor:totalBens},
-                ].map((item,i)=><div key={i} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:item.bold?`1px solid ${C.borderLight}`:'none'}}>
-                  <span style={{fontSize:12,fontWeight:item.bold?700:400,color:C.navy}}>{item.label}</span>
-                  <span style={{fontSize:12,fontWeight:item.bold?700:400,color:C.navy}}>{fmtCurrency(item.valor)}</span>
-                </div>)}
-              </div>
-              <div style={{background:C.green,padding:'10px 18px',display:'flex',justifyContent:'space-between'}}>
-                <span style={{fontSize:12,fontWeight:700,color:'#fff'}}>TOTAL DO ATIVO</span>
-                <span style={{fontSize:13,fontWeight:800,color:'#fff'}}>{fmtCurrency(totalAtivos)}</span>
-              </div>
-            </div>
-            {/* PASSIVOS + PL */}
-            <div style={{...s.card,padding:0,overflow:'hidden'}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 18px',borderBottom:`1px solid ${C.border}`,background:'#FEF2F2'}}>
-                <span style={{fontWeight:800,color:C.red,fontSize:13}}>PASSIVO + PATRIMÔNIO LÍQUIDO</span><span style={{fontSize:10,fontWeight:700,color:C.navyLight,letterSpacing:'0.1em'}}>OBRIGAÇÕES</span>
-              </div>
-              <div style={{padding:'12px 18px'}}>
-                {[
-                  {label:'Passivo Circulante',valor:impostosPagar,bold:true},
-                  {label:'Impostos a Pagar',valor:impostosPagar},
-                  {label:'Fornecedores',valor:0},
-                  {label:'Patrimônio Líquido',valor:patrimonioLiq,bold:true,highlight:true},
-                  {label:'Capital Social',valor:data.settings.capital_social},
-                  {label:'Lucros/Prejuízos Acumulados',valor:lucroAcumulado,neg:true},
-                ].map((item,i)=><div key={i} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:item.bold?`1px solid ${C.borderLight}`:'none'}}>
-                  <span style={{fontSize:12,fontWeight:item.bold?700:400,color:item.highlight?C.primary:C.navy}}>{item.label}</span>
-                  <span style={{fontSize:12,fontWeight:item.bold?700:400,color:item.neg?(item.valor<0?C.red:C.green):C.navy}}>{fmtCurrency(item.valor)}</span>
-                </div>)}
-              </div>
-              <div style={{background:C.red,padding:'10px 18px',display:'flex',justifyContent:'space-between'}}>
-                <span style={{fontSize:12,fontWeight:700,color:'#fff'}}>TOTAL PASSIVO + PL</span>
-                <span style={{fontSize:13,fontWeight:800,color:'#fff'}}>{fmtCurrency(impostosPagar + patrimonioLiq)}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* DRE SIMPLIFICADO */}
-          <div style={{...s.card,marginBottom:20}}>
-            <div style={s.sectionTitle}>DRE — Demonstração do Resultado (Março 2026)</div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:0}}>
-              {[
-                {label:'(+) Receita Bruta',valor:receitaBruta,color:C.green,bold:true},
-                {label:'(-) Deduções (Impostos sobre venda)',valor:-deducoes,color:C.red},
-                {label:'(=) Receita Líquida',valor:receitaLiquida,bold:true,sep:true},
-                {label:'(-) Custo dos Produtos Vendidos (Insumos + Serviço)',valor:-cpv,color:C.red},
-                {label:'(=) Lucro Bruto',valor:lucroBruto,bold:true,sep:true},
-                {label:'(-) Despesas Operacionais (Admin + Marketing)',valor:-despOp,color:C.red},
-                {label:'(=) EBITDA',valor:ebitda,bold:true,highlight:true,sep:true},
-                {label:'(-) Impostos e Taxas',valor:-impostosTotal,color:C.red},
-                {label:'(=) Lucro Líquido',valor:lucroLiquido,bold:true,highlight:true,sep:true},
-              ].map((item,i)=>(
-                <div key={i} style={{display:'contents'}}>
-                  <div style={{padding:'8px 12px',fontWeight:item.bold?700:400,fontSize:13,color:item.highlight?C.primary:C.navy,borderTop:item.sep?`2px solid ${C.border}`:'none',background:item.highlight?'#FEF3EA':'transparent'}}>{item.label}</div>
-                  <div style={{padding:'8px 12px',fontWeight:item.bold?800:500,fontSize:13,textAlign:'right',color:item.color||(item.valor>=0?C.green:C.red),borderTop:item.sep?`2px solid ${C.border}`:'none',background:item.highlight?'#FEF3EA':'transparent'}}>{item.valor>=0?'+':''}{fmtCurrency(Math.abs(item.valor))}</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+            {[{title:'ATIVO',sub:'RECURSOS',items:[{label:'Ativo Circulante',valor:totalAtivo,bold:true},{label:'Caixa e Equivalentes de Caixa',valor:431.89},{label:'Contas a Receber',valor:54.00},{label:'Estoques',valor:1816.00},{label:'Outros Créditos',valor:0},{label:'Ativo Não Circulante',valor:0,bold:true},{label:'Imobilizado (Líquido)',valor:0},{label:'Investimentos',valor:0},{label:'Intangível',valor:0}]},{title:'PASSIVO E PATRIMÔNIO LÍQUIDO',sub:'OBRIGAÇÕES',items:[{label:'Passivo Circulante',valor:0,bold:true},{label:'Fornecedores',valor:0},{label:'Empréstimos e Financiamentos',valor:0},{label:'Obrigações Fiscais e Sociais',valor:0},{label:'Passivo Não Circulante',valor:0,bold:true},{label:'Financiamentos Longo Prazo',valor:0},{label:'Patrimônio Líquido',valor:totalAtivo,bold:true,highlight:true},{label:'Capital Social',valor:data.settings.capital_social},{label:'Lucros / Prejuízos Acumulados',valor:totalAtivo-data.settings.capital_social,neg:true}]}].map(col=>(
+              <div key={col.title} style={{...s.card,padding:0,overflow:'hidden'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 18px',borderBottom:`1px solid ${C.border}`}}>
+                  <span style={{fontWeight:800,color:C.navy,fontSize:13}}>{col.title}</span><span style={{fontSize:10,fontWeight:700,color:C.navyLight,letterSpacing:'0.1em'}}>{col.sub}</span>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* PAINEL EBITDA */}
-          <div style={{display:'grid',gridTemplateColumns:'1fr 2fr',gap:16}}>
-            <div style={{display:'flex',flexDirection:'column',gap:12}}>
-              <div style={{...s.card,background:ebitda>=0?'#F0FDF4':'#FEF2F2',borderLeft:`4px solid ${ebitda>=0?C.green:C.red}`}}>
-                <div style={{fontSize:11,fontWeight:700,color:C.navyLight,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}}>EBITDA do Mês</div>
-                <div style={{fontSize:28,fontWeight:800,color:ebitda>=0?C.green:C.red}}>{fmtCurrency(ebitda)}</div>
-                <div style={{fontSize:12,color:C.navyLight,marginTop:4}}>Margem: <strong style={{color:ebitda>=0?C.green:C.red}}>{margemEbitda}%</strong></div>
-              </div>
-              <div style={s.card}>
-                <div style={{fontSize:11,fontWeight:700,color:C.navyLight,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}}>Projeção do Mês</div>
-                <div style={{fontSize:20,fontWeight:800,color:C.navy}}>{fmtCurrency(projecaoFaturamento)}</div>
-                <div style={{fontSize:11,color:C.navyLight,marginTop:4}}>Baseado na média dos primeiros {diasPassados} dias</div>
-                <div style={{marginTop:6,height:6,background:C.borderLight,borderRadius:3}}>
-                  <div style={{height:6,width:`${Math.min((projecaoFaturamento/data.settings.meta_faturamento)*100,100)}%`,background:projecaoFaturamento>=data.settings.meta_faturamento?C.green:C.amber,borderRadius:3}}/>
+                <div style={{padding:'12px 18px'}}>
+                  {col.items.map((item,i)=><div key={i} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:item.bold?`1px solid ${C.borderLight}`:'none'}}>
+                    <span style={{fontSize:13,fontWeight:item.bold?700:400,color:item.highlight?C.primary:C.navy}}>{item.label}</span>
+                    <span style={{fontSize:13,fontWeight:item.bold?700:400,color:item.neg?(item.valor<0?C.red:C.green):C.navy}}>{fmtCurrency(item.valor)}</span>
+                  </div>)}
                 </div>
-                <div style={{fontSize:10,color:C.navyLight,marginTop:3}}>Meta: {fmtCurrency(data.settings.meta_faturamento)}</div>
+                <div style={{background:C.navy,padding:'10px 18px',display:'flex',justifyContent:'space-between'}}>
+                  <span style={{fontSize:12,fontWeight:700,color:'#fff'}}>TOTAL DO {col.title.split(' ')[0]}</span>
+                  <span style={{fontSize:13,fontWeight:800,color:C.amber}}>{fmtCurrency(totalAtivo)}</span>
+                </div>
               </div>
-            </div>
-            <div style={s.card}>
-              <div style={s.sectionTitle}>Receita vs Despesa vs EBITDA (6 meses)</div>
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={ebitdaMensal}><CartesianGrid strokeDasharray="3 3" stroke={C.borderLight}/><XAxis dataKey="name" tick={{fontSize:11}}/><YAxis tick={{fontSize:11}} tickFormatter={v=>`R$${v}`}/><Tooltip formatter={v=>fmtCurrency(v)}/><Legend/>
-                  <Bar dataKey="receita" name="Receita" fill={C.green} radius={[4,4,0,0]}/>
-                  <Bar dataKey="despesa" name="Despesa" fill={C.red} radius={[4,4,0,0]}/>
-                  <Bar dataKey="ebitda" name="EBITDA" fill={C.blue} radius={[4,4,0,0]}/>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            ))}
           </div>
         </div>
       );
     }
-
-    // ═════════════════════════════════════════════
-    // COLABORADORES (TAREFA 4)
-    // ═════════════════════════════════════════════
     if(tab==='colaboradores') return (
       <div>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
           <div style={s.sectionTitle}>Pagamento a Colaboradores</div>
-          <Btn size='sm' onClick={()=>setEditColab({...emptyColab})}><Plus size={13}/>Novo Colaborador</Btn>
+          <Btn size='sm' onClick={()=>openModal('novoColaborador')}><Plus size={13}/>Novo Colaborador</Btn>
         </div>
-        {data.colaboradores.length===0 && <div style={{...s.card,textAlign:'center',padding:40,color:C.navyLight}}>Nenhum colaborador cadastrado. Clique em "Novo Colaborador" para adicionar.</div>}
-        {data.colaboradores.map(col=>{
-          const valorAcum = calcValorAcumulado(col);
-          const fornadasNaoPagas = data.producoes.filter(p=>p.operador===col.nome && !p.pago_colaborador).length;
-          const fornadasMes = data.producoes.filter(p=>p.operador===col.nome&&p.data.startsWith('2026-03')).length;
-          return (
+        {data.colaboradores.map(col=>(
           <div key={col.id} style={{...s.card,marginBottom:12}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
               <div style={{display:'flex',alignItems:'center',gap:12}}>
-                {col.foto_url ? <img src={col.foto_url} style={{width:40,height:40,borderRadius:20,objectFit:'cover'}}/> : <div style={{width:40,height:40,borderRadius:20,background:'#FEF3EA',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>👨‍🍳</div>}
-                <div>
-                  <div style={{fontWeight:700,color:C.navy}}>{col.nome}</div>
-                  <div style={{fontSize:11,color:C.navyLight}}>{col.funcao}{col.whatsapp ? ` — ${col.whatsapp}` : ''}{col.email ? ` — ${col.email}` : ''}</div>
-                </div>
+                <div style={{width:40,height:40,borderRadius:20,background:'#FEF3EA',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>👨‍🍳</div>
+                <div><div style={{fontWeight:700,color:C.navy}}>{col.nome}</div><div style={{fontSize:11,color:C.navyLight}}>{col.funcao} — {col.whatsapp}</div></div>
               </div>
-              <div style={{display:'flex',alignItems:'center',gap:8}}>
-                <Badge color={col.ativo?'green':'gray'}>{col.ativo?'Ativo':'Inativo'}</Badge>
-                <button onClick={()=>setEditColab({...col})} style={{border:'none',background:'none',cursor:'pointer',padding:4}}><Edit size={15} color={C.navyLight}/></button>
-                <button onClick={()=>setConfirmDeleteColab(col.id)} style={{border:'none',background:'none',cursor:'pointer',padding:4}}><Trash2 size={15} color={C.red}/></button>
-              </div>
+              <Badge color='green'>{col.ativo?'Ativo':'Inativo'}</Badge>
             </div>
-            <div style={{marginTop:12,display:'grid',gridTemplateColumns:'1fr 1fr auto',gap:10,alignItems:'center'}}>
-              <div style={{padding:12,background:'#F9F6F4',borderRadius:8,fontSize:12,color:C.navyLight}}>
-                Fornadas no mês: <strong style={{color:C.navy}}>{fornadasMes}</strong>
-                {fornadasNaoPagas>0 && <span> ({fornadasNaoPagas} não pagas)</span>}
-              </div>
-              <div style={{padding:12,background:valorAcum>0?'#FEF3EA':'#F9F6F4',borderRadius:8,fontSize:12}}>
-                <div style={{fontSize:10,fontWeight:700,color:C.navyLight,textTransform:'uppercase',letterSpacing:'0.06em'}}>Valor Acumulado de Serviço</div>
-                <div style={{fontSize:18,fontWeight:800,color:valorAcum>0?C.primary:C.navyLight}}>{fmtCurrency(valorAcum)}</div>
-              </div>
-              <button onClick={()=>{if(valorAcum>0)setConfirmPagColab(col);}} disabled={valorAcum<=0} style={{...s.btn,background:valorAcum>0?C.green:'#ccc',opacity:valorAcum>0?1:0.5,fontSize:12,padding:'10px 16px',cursor:valorAcum>0?'pointer':'not-allowed'}}>
-                <DollarSign size={14}/>Lançar Pagamento
-              </button>
-            </div>
+            <div style={{marginTop:12,padding:12,background:'#F9F6F4',borderRadius:8,fontSize:12,color:C.navyLight}}>Produções no mês: <strong style={{color:C.navy}}>{data.producoes.filter(p=>p.operador===col.nome&&p.data.startsWith('2026-03')).length}</strong> fornadas registradas</div>
           </div>
-        );})}
-
+        ))}
       </div>
     );
     return null;
@@ -1294,82 +864,6 @@ const PanelContabilidade = ({data, setData, openModal}) => {
         ))}
       </div>
       <div style={{flex:1,padding:24,overflowY:'auto'}}><TabContent/></div>
-
-      {/* Modal Editar/Novo Colaborador — FORA do TabContent para evitar bug de re-render */}
-      <Modal open={!!editColab} onClose={()=>setEditColab(null)} title={editColab?.id && data.colaboradores.find(c=>c.id===editColab?.id) ? 'Editar Colaborador' : 'Novo Colaborador'} subtitle="Preencha os dados do colaborador" width={460}>
-        {editColab && <div>
-          <FormField label="Nome" required><Input value={editColab.nome} onChange={e=>setEditColab({...editColab,nome:e.target.value})} placeholder="Nome completo"/></FormField>
-          <FormField label="Função" required><Input value={editColab.funcao} onChange={e=>setEditColab({...editColab,funcao:e.target.value})} placeholder="Ex: Produtor, Entregador..."/></FormField>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-            <FormField label="E-mail"><Input type="email" value={editColab.email||''} onChange={e=>setEditColab({...editColab,email:e.target.value})} placeholder="email@exemplo.com"/></FormField>
-            <FormField label="WhatsApp"><Input value={editColab.whatsapp||''} onChange={e=>setEditColab({...editColab,whatsapp:e.target.value})} placeholder="55 (73) 9XXXX-XXXX"/></FormField>
-          </div>
-          <FormField label="Foto (URL)"><Input value={editColab.foto_url||''} onChange={e=>setEditColab({...editColab,foto_url:e.target.value})} placeholder="https://..."/></FormField>
-          <div style={{padding:10,background:'#F9F6F4',borderRadius:8,marginBottom:14}}>
-            <div style={{fontSize:10,fontWeight:700,color:C.navyLight,textTransform:'uppercase',marginBottom:4}}>Valor Acumulado de Serviço</div>
-            <div style={{fontSize:18,fontWeight:800,color:C.primary}}>{fmtCurrency(editColab?.id ? calcValorAcumulado(editColab) : 0)}</div>
-            <div style={{fontSize:10,color:C.navyLight,marginTop:2}}>Calculado automaticamente a partir das produções lançadas. Zerado ao lançar pagamento.</div>
-          </div>
-          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}>
-            <label style={{fontSize:12,fontWeight:600,color:C.navy,cursor:'pointer',display:'flex',alignItems:'center',gap:6}}>
-              <input type="checkbox" checked={editColab.ativo} onChange={e=>setEditColab({...editColab,ativo:e.target.checked})} style={{accentColor:C.primary}}/>
-              Colaborador Ativo
-            </label>
-          </div>
-          <div style={{display:'flex',justifyContent:'flex-end',gap:10,marginTop:8}}>
-            <Btn variant='outline' onClick={()=>setEditColab(null)}>Cancelar</Btn>
-            <Btn onClick={saveColab}><Check size={14}/>Salvar</Btn>
-          </div>
-        </div>}
-      </Modal>
-
-      {/* Confirm Lançar Pagamento */}
-      {confirmPagColab && <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.45)',zIndex:1001,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setConfirmPagColab(null)}>
-        <div style={{background:'#fff',borderRadius:12,padding:24,maxWidth:420,width:'90%',boxShadow:'0 20px 60px rgba(0,0,0,0.2)'}} onClick={e=>e.stopPropagation()}>
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
-            <div style={{width:40,height:40,borderRadius:20,background:C.greenLight,display:'flex',alignItems:'center',justifyContent:'center'}}><DollarSign size={20} color={C.green}/></div>
-            <div>
-              <div style={{fontWeight:700,color:C.navy,fontSize:15}}>Lançar Pagamento</div>
-              <div style={{fontSize:12,color:C.navyLight}}>Confirme o pagamento ao colaborador</div>
-            </div>
-          </div>
-          <div style={{background:'#F9F6F4',borderRadius:10,padding:16,marginBottom:16}}>
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-              <span style={{fontSize:12,color:C.navyLight}}>Colaborador:</span>
-              <span style={{fontSize:12,fontWeight:700,color:C.navy}}>{confirmPagColab.nome}</span>
-            </div>
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-              <span style={{fontSize:12,color:C.navyLight}}>Fornadas não pagas:</span>
-              <span style={{fontSize:12,fontWeight:700,color:C.navy}}>{data.producoes.filter(p=>p.operador===confirmPagColab.nome && !p.pago_colaborador).length}</span>
-            </div>
-            <div style={{display:'flex',justifyContent:'space-between',borderTop:`1px solid ${C.border}`,paddingTop:8,marginTop:4}}>
-              <span style={{fontSize:13,fontWeight:700,color:C.navy}}>Valor Total:</span>
-              <span style={{fontSize:18,fontWeight:800,color:C.green}}>{fmtCurrency(calcValorAcumulado(confirmPagColab))}</span>
-            </div>
-          </div>
-          <div style={{fontSize:11,color:C.navyLight,marginBottom:12,padding:'8px 10px',background:'#FEF3EA',borderRadius:6}}>
-            Ao confirmar, uma despesa de "Custo Serviço" será lançada no Fluxo de Caixa e o valor acumulado será zerado.
-          </div>
-          <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
-            <Btn variant='outline' onClick={()=>setConfirmPagColab(null)}>Cancelar</Btn>
-            <Btn onClick={()=>lancarPagamento(confirmPagColab)} style={{background:C.green}}><Check size={14}/>Confirmar Pagamento</Btn>
-          </div>
-        </div>
-      </div>}
-
-      {/* Confirm Delete Colaborador */}
-      {confirmDeleteColab && <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.45)',zIndex:1001,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setConfirmDeleteColab(null)}>
-        <div style={{background:'#fff',borderRadius:12,padding:24,maxWidth:380,width:'90%',boxShadow:'0 20px 60px rgba(0,0,0,0.2)'}} onClick={e=>e.stopPropagation()}>
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
-            <div style={{width:36,height:36,borderRadius:18,background:C.redLight,display:'flex',alignItems:'center',justifyContent:'center'}}><AlertTriangle size={18} color={C.red}/></div>
-            <div><div style={{fontWeight:700,color:C.navy}}>Excluir Colaborador?</div><div style={{fontSize:12,color:C.navyLight}}>Esta ação não pode ser desfeita.</div></div>
-          </div>
-          <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
-            <Btn variant='outline' onClick={()=>setConfirmDeleteColab(null)}>Cancelar</Btn>
-            <Btn onClick={()=>deleteColab(confirmDeleteColab)} style={{background:C.red}}><Trash2 size={14}/>Excluir</Btn>
-          </div>
-        </div>
-      </div>}
     </div>
   );
 };
@@ -1397,7 +891,7 @@ const PanelEstoque = ({data, setData, openModal, isMobile}) => {
   const [showMovimentacao, setShowMovimentacao] = useState(false);
   const [showNovaFicha, setShowNovaFicha] = useState(false);
   const [movForm, setMovForm] = useState({tipo:'entrada',item_type:'produto',item_id:'',quantidade:'',data:new Date().toISOString().slice(0,10),motivo:'',operador:'Tiberio'});
-  const [fichaForm, setFichaForm] = useState({produto_id:'',nome_produto:'',categoria_produto:'',valor_venda_unitario:'',custo_material:'',custo_mao_obra:'',modo_preparo:'',peso_cru:'',peso_pronto:'',foto_principal:'',fotos_secundarias:['','',''],ingredientes:[],etapas:[],tempo_preparo:'',rendimento:''});
+  const [fichaForm, setFichaForm] = useState({produto_id:'',valor_venda_unitario:'',custo_material:'',custo_mao_obra:'',modo_preparo:'',peso_cru:'',peso_pronto:'',foto_principal:'',fotos_secundarias:['','',''],ingredientes:[],etapas:[],tempo_preparo:'',rendimento:''});
 
   const prodAlerts = data.produtos.filter(p=>isLowStock(p)||isExpiringSoon(p));
   const insAlerts = data.insumos.filter(p=>isLowStock(p)||isExpiringSoon(p));
@@ -1498,8 +992,7 @@ const PanelEstoque = ({data, setData, openModal, isMobile}) => {
 
   // Save nova ficha
   const saveNovaFicha = () => {
-    // Validar: precisa de nome do produto OU produto existente selecionado, e preço de venda
-    if((!fichaForm.produto_id && !fichaForm.nome_produto) || !fichaForm.valor_venda_unitario) return;
+    if(!fichaForm.produto_id||!fichaForm.valor_venda_unitario) return;
     const isEdit = !!fichaForm.id;
     // Calculate custo_material from ingredientes if available
     const totalIngredientes = fichaForm.ingredientes.reduce((sum, ing) => {
@@ -1512,65 +1005,33 @@ const PanelEstoque = ({data, setData, openModal, isMobile}) => {
     const vv = parseFloat(fichaForm.valor_venda_unitario)||0;
     const pc = parseFloat(fichaForm.peso_cru)||0;
     const pp = parseFloat(fichaForm.peso_pronto)||0;
-
-    // Se não vinculou a um produto existente, criar novo produto
-    let produtoId = fichaForm.produto_id ? parseInt(fichaForm.produto_id) : null;
-    const catEmojis = {'panificação':'🥖','pizzas':'🍕','bebidas':'🧋'};
-
+    const newFicha = {
+      id:Date.now(),produto_id:parseInt(fichaForm.produto_id),
+      valor_venda_unitario:vv,custo_material:cm,custo_mao_obra:cmo,
+      custo_bruto_producao:cm+cmo,
+      margem_lucro:vv>0?Math.round(((vv-(cm+cmo))/vv)*1000)/10:0,
+      modo_preparo:fichaForm.modo_preparo,peso_cru:pc,peso_pronto:pp,
+      percentual_perda:pc>0?Math.round(((pc-pp)/pc)*1000)/10:0,
+      foto_principal:fichaForm.foto_principal,
+      fotos_secundarias:fichaForm.fotos_secundarias.filter(f=>f),
+      ingredientes:fichaForm.ingredientes,
+      etapas:fichaForm.etapas,
+      tempo_preparo:fichaForm.tempo_preparo,
+      rendimento:fichaForm.rendimento
+    };
+    // Update product foto_url if foto_principal is set
     setData(prev=>{
-      let prods = [...prev.produtos];
-      // Criar novo produto se necessário
-      if(!produtoId && fichaForm.nome_produto) {
-        const novoProd = {
-          id: Date.now()+100,
-          nome: fichaForm.nome_produto,
-          categoria: fichaForm.categoria_produto || 'panificação',
-          quantidade: 0,
-          valor_unitario: vv,
-          prazo_validade: null,
-          alerta_minimo: 1,
-          emoji: catEmojis[fichaForm.categoria_produto] || '📦',
-          descricao: fichaForm.nome_produto,
-          foto_url: fichaForm.foto_principal || null
-        };
-        prods = [...prods, novoProd];
-        produtoId = novoProd.id;
+      let prods = prev.produtos;
+      if(fichaForm.foto_principal) {
+        prods = prods.map(p => p.id === parseInt(fichaForm.produto_id) ? {...p, foto_url: fichaForm.foto_principal} : p);
       }
-      // Atualizar foto do produto se foto_principal definida
-      if(fichaForm.foto_principal && produtoId) {
-        prods = prods.map(p => p.id === produtoId ? {...p, foto_url: fichaForm.foto_principal} : p);
-      }
-      // Atualizar nome/categoria se editando produto existente
-      if(fichaForm.produto_id && fichaForm.nome_produto) {
-        prods = prods.map(p => p.id === parseInt(fichaForm.produto_id) ? {
-          ...p,
-          nome: fichaForm.nome_produto || p.nome,
-          categoria: fichaForm.categoria_produto || p.categoria,
-          emoji: catEmojis[fichaForm.categoria_produto] || p.emoji
-        } : p);
-      }
-
-      const newFicha = {
-        id:Date.now(),produto_id:produtoId,
-        valor_venda_unitario:vv,custo_material:cm,custo_mao_obra:cmo,
-        custo_bruto_producao:cm+cmo,
-        margem_lucro:vv>0?Math.round(((vv-(cm+cmo))/vv)*1000)/10:0,
-        modo_preparo:fichaForm.modo_preparo,peso_cru:pc,peso_pronto:pp,
-        percentual_perda:pc>0?Math.round(((pc-pp)/pc)*1000)/10:0,
-        foto_principal:fichaForm.foto_principal,
-        fotos_secundarias:fichaForm.fotos_secundarias.filter(f=>f),
-        ingredientes:fichaForm.ingredientes,
-        etapas:fichaForm.etapas,
-        tempo_preparo:fichaForm.tempo_preparo,
-        rendimento:fichaForm.rendimento
-      };
       const fichasAtualizadas = isEdit
         ? prev.fichas.map(f => f.id === fichaForm.id ? {...newFicha, id: fichaForm.id} : f)
         : [...prev.fichas, newFicha];
       return {...prev,fichas:fichasAtualizadas,produtos:prods};
     });
     setShowNovaFicha(false);
-    setFichaForm({produto_id:'',nome_produto:'',categoria_produto:'',valor_venda_unitario:'',custo_material:'',custo_mao_obra:'',modo_preparo:'',peso_cru:'',peso_pronto:'',foto_principal:'',fotos_secundarias:['','',''],ingredientes:[],etapas:[],tempo_preparo:'',rendimento:''});
+    setFichaForm({produto_id:'',valor_venda_unitario:'',custo_material:'',custo_mao_obra:'',modo_preparo:'',peso_cru:'',peso_pronto:'',foto_principal:'',fotos_secundarias:['','',''],ingredientes:[],etapas:[],tempo_preparo:'',rendimento:''});
   };
 
   const fichaCalcIngredientes = fichaForm.ingredientes.reduce((sum, ing) => {
@@ -1647,24 +1108,10 @@ const PanelEstoque = ({data, setData, openModal, isMobile}) => {
       </Modal>
 
       {/* Modal Nova Ficha Técnica */}
-      <Modal open={showNovaFicha} onClose={()=>{setShowNovaFicha(false);setFichaForm({produto_id:'',nome_produto:'',categoria_produto:'',valor_venda_unitario:'',custo_material:'',custo_mao_obra:'',modo_preparo:'',peso_cru:'',peso_pronto:'',foto_principal:'',fotos_secundarias:['','',''],ingredientes:[],etapas:[],tempo_preparo:'',rendimento:''});}} title={fichaForm.id?"Editar Ficha Técnica":"Nova Ficha Técnica"} subtitle={fichaForm.id?"Cadastre a ficha com nome, tipo e dados de produção":"Cadastre a ficha com nome, tipo e dados de produção"} width={680}>
-        <FormField label="Nome do Produto" required>
-          <Input value={fichaForm.nome_produto||''} onChange={e=>setFichaForm(f=>({...f,nome_produto:e.target.value}))} placeholder="Ex: Bambuguette Integral, Pizza 4 Queijos..."/>
-        </FormField>
-        <FormField label="Tipo de Produto" required>
-          <Select value={fichaForm.categoria_produto||''} onChange={e=>setFichaForm(f=>({...f,categoria_produto:e.target.value}))}>
-            <option value="">Selecionar tipo...</option>
-            <option value="panificação">🥖 Panificação</option>
-            <option value="pizzas">🍕 Pizza</option>
-            <option value="bebidas">🧋 Bebidas</option>
-          </Select>
-        </FormField>
-        <FormField label="Produto existente (opcional)">
-          <Select value={fichaForm.produto_id} onChange={e=>{
-            const prodSel = data.produtos.find(p=>p.id===parseInt(e.target.value));
-            setFichaForm(f=>({...f, produto_id:e.target.value, nome_produto:prodSel?.nome||f.nome_produto, categoria_produto:prodSel?.categoria||f.categoria_produto}));
-          }}>
-            <option value="">Criar novo produto ou vincular existente...</option>
+      <Modal open={showNovaFicha} onClose={()=>{setShowNovaFicha(false);setFichaForm({produto_id:'',valor_venda_unitario:'',custo_material:'',custo_mao_obra:'',modo_preparo:'',peso_cru:'',peso_pronto:'',foto_principal:'',fotos_secundarias:['','',''],ingredientes:[],etapas:[],tempo_preparo:'',rendimento:''});}} title={fichaForm.id?"Editar Ficha Técnica":"Nova Ficha Técnica"} subtitle={fichaForm.id?"Atualizar dados da ficha":"Cadastrar ficha de produção completa"} width={680}>
+        <FormField label="Produto" required>
+          <Select value={fichaForm.produto_id} onChange={e=>setFichaForm(f=>({...f,produto_id:e.target.value}))}>
+            <option value="">Selecionar produto...</option>
             {data.produtos.filter(p=>fichaForm.id?true:!data.fichas.some(f=>f.produto_id===p.id)).map(p=><option key={p.id} value={p.id}>{p.emoji} {p.nome}</option>)}
           </Select>
         </FormField>
@@ -1883,7 +1330,7 @@ const PanelProducao = ({data, setData, openModal}) => {
   const [editFornada, setEditFornada] = useState(null);
   const [fornadaForm, setFornadaForm] = useState({data:'',hora_inicio:'',hora_fim:'',tipo:'Pães',encerramento_encomenda:''});
   const [showNovaProducao, setShowNovaProducao] = useState(false);
-  const [producaoForm, setProducaoForm] = useState({produto_id:'',quantidade:'',observacao:'',operador:data.colaboradores[0]?.nome||'',etapas_producao:[]});
+  const [producaoForm, setProducaoForm] = useState({produto_id:'',quantidade:'',observacao:'',operador:'Tiberio',etapas_producao:[]});
   const mesProducoes = data.producoes.filter(p=>p.data.startsWith('2026-03'));
   const totalProd = mesProducoes.reduce((a,p)=>a+p.quantidade,0);
   const pendentes = data.pedidos.filter(p=>p.status_producao==='pendente');
@@ -1907,7 +1354,7 @@ const PanelProducao = ({data, setData, openModal}) => {
     setData(prev => {
       let newData = {...prev};
       // Add production record
-      const prodRecord = {id:Date.now(),data:new Date().toISOString().slice(0,10),produto_id:prodId,quantidade:qtdProd,operador:producaoForm.operador,observacao:producaoForm.observacao,etapas_producao:producaoForm.etapas_producao,pago_colaborador:false};
+      const prodRecord = {id:Date.now(),data:new Date().toISOString().slice(0,10),produto_id:prodId,quantidade:qtdProd,operador:producaoForm.operador,observacao:producaoForm.observacao,etapas_producao:producaoForm.etapas_producao};
       newData.producoes = [...prev.producoes, prodRecord];
 
       // Repor estoque do produto
@@ -1948,12 +1395,8 @@ const PanelProducao = ({data, setData, openModal}) => {
       });
       newData.produtos = produtosAtualizados;
 
-      // Custo de mão de obra acumulado automaticamente via pago_colaborador:false no prodRecord
-      const custoMO = ficha ? ficha.custo_mao_obra * qtdProd : 0;
-
       // Activity log
-      const moInfo = custoMO > 0 ? ` (MO: ${new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(custoMO)} → ${producaoForm.operador})` : '';
-      newData.activityLog = [{id:Date.now(),tipo:'producao',descricao:`Produção: ${qtdProd}x ${prod?.nome||'?'} — ${producaoForm.operador}${moInfo}`,data:new Date().toISOString(),operador:producaoForm.operador,icon:'producao'},...(newData.activityLog||prev.activityLog)];
+      newData.activityLog = [{id:Date.now(),tipo:'producao',descricao:`Produção: ${qtdProd}x ${prod?.nome||'?'} — ${producaoForm.operador}`,data:new Date().toISOString(),operador:producaoForm.operador,icon:'producao'},...(newData.activityLog||prev.activityLog)];
 
       // Alert for low insumos
       if(alertas.length>0) setTimeout(()=>alert(`⚠️ Insumos abaixo do mínimo: ${alertas.join(', ')}`),100);
@@ -1962,7 +1405,7 @@ const PanelProducao = ({data, setData, openModal}) => {
     });
 
     setShowNovaProducao(false);
-    setProducaoForm({produto_id:'',quantidade:'',observacao:'',operador:data.colaboradores[0]?.nome||'',etapas_producao:[]});
+    setProducaoForm({produto_id:'',quantidade:'',observacao:'',operador:'Tiberio',etapas_producao:[]});
   };
 
   // Save/edit fornada
@@ -3009,42 +2452,19 @@ DADOS ATUAIS DO SISTEMA (${new Date().toLocaleDateString('pt-BR')}):
 // MODAL: NOVA TRANSAÇÃO
 // ═══════════════════════════════════════════════════
 const ModalNovaTransacao = ({open, onClose, data, setData}) => {
-  const [form, setForm] = useState({descricao:'',data:NOW.toISOString().slice(0,16),conta:'PIX',categoria:'',tipo:'receita',valor:'',insumo_id:'',insumo_qtd:''});
-  const cats = {receita:['Vendas Delivery','Vendas Retirada','Outros'], despesa:['Impostos e Taxas','Percas e Prejuízos','Insumos','Custo de Produção','Custo Administrativo','Marketing','Investimento','Manutenção','Salários','Outros']};
+  const [form, setForm] = useState({descricao:'',data:NOW.toISOString().slice(0,16),conta:'PIX',categoria:'',tipo:'receita',valor:''});
+  const cats = {receita:['Vendas Delivery','Vendas Retirada','Outros'], despesa:['Insumos','Marketing','Impostos e Taxas','Custo de Produção','Manutenção','Salários','Outros']};
   const set = k => e => setForm(f=>({...f,[k]:e.target.value}));
-  const isInsumo = form.tipo==='despesa' && form.categoria==='Insumos';
-  const insumoSel = isInsumo && form.insumo_id ? data.insumos.find(i=>i.id===parseInt(form.insumo_id)) : null;
   const save = () => {
     if(!form.descricao||!form.valor) return;
     const t={...form,id:Date.now(),valor:parseFloat(form.valor)};
-    // Remove campos auxiliares de insumo do registro de transação
-    delete t.insumo_id; delete t.insumo_qtd;
-    setData(prev=>{
-      let newData = {...prev};
-      // Registrar transação financeira
-      newData.transactions = [t,...prev.transactions];
-      // Se for compra de insumo, repor estoque
-      if(isInsumo && form.insumo_id && form.insumo_qtd) {
-        const insId = parseInt(form.insumo_id);
-        const insQtd = parseFloat(form.insumo_qtd);
-        const ins = prev.insumos.find(i=>i.id===insId);
-        if(ins && insQtd > 0) {
-          newData.insumos = prev.insumos.map(i => i.id===insId ? {...i, quantidade: i.quantidade + insQtd} : i);
-          t.insumo_reposto = {id:insId, nome:ins.nome, quantidade:insQtd, unidade:ins.unidade};
-        }
-      }
-      // Activity log
-      const insInfo = t.insumo_reposto ? ` → Estoque: +${t.insumo_reposto.quantidade}${t.insumo_reposto.unidade} ${t.insumo_reposto.nome}` : '';
-      newData.activityLog = [{id:Date.now(),tipo:'transacao',descricao:`${form.descricao} — ${form.tipo==='receita'?'+':'-'}R$${parseFloat(form.valor).toFixed(2)}${insInfo}`,data:form.data,operador:prev.settings?.responsavel||'Tiberio',icon:form.tipo},...(prev.activityLog||[])];
-      return newData;
-    });
-    setForm({descricao:'',data:NOW.toISOString().slice(0,16),conta:'PIX',categoria:'',tipo:'receita',valor:'',insumo_id:'',insumo_qtd:''});
+    setData(prev=>({...prev,transactions:[t,...prev.transactions],activityLog:[{id:Date.now(),tipo:'transacao',descricao:`${form.descricao} — ${form.tipo==='receita'?'+':'-'}R$${parseFloat(form.valor).toFixed(2)}`,data:form.data,operador:'Tiberio',icon:form.tipo},...prev.activityLog]}));
     onClose();
   };
   return (
     <Modal open={open} onClose={onClose} title="Nova Transação Financeira" subtitle="Registre uma receita ou despesa">
       <div style={{display:'flex',gap:12,marginBottom:14}}>
-        {['receita','despesa'].map(t=><button key={t} onClick={()=>setForm(f=>({...f,tipo:t,categoria:'',insumo_id:'',insumo_qtd:''}))} style={{flex:1,padding:'10px',borderRadius:8,border:`2px solid ${form.tipo===t?(t==='receita'?C.green:C.red):C.border}`,background:form.tipo===t?(t==='receita'?C.greenLight:C.redLight):'#fff',cursor:'pointer',fontWeight:700,color:form.tipo===t?(t==='receita'?C.green:C.red):C.navyLight,textTransform:'capitalize',fontSize:13}}>{t==='receita'?'✅ Receita':'❌ Despesa'}</button>)}
+        {['receita','despesa'].map(t=><button key={t} onClick={()=>setForm(f=>({...f,tipo:t}))} style={{flex:1,padding:'10px',borderRadius:8,border:`2px solid ${form.tipo===t?(t==='receita'?C.green:C.red):C.border}`,background:form.tipo===t?(t==='receita'?C.greenLight:C.redLight):'#fff',cursor:'pointer',fontWeight:700,color:form.tipo===t?(t==='receita'?C.green:C.red):C.navyLight,textTransform:'capitalize',fontSize:13}}>{t==='receita'?'✅ Receita':'❌ Despesa'}</button>)}
       </div>
       <FormField label="Descrição" required><Input value={form.descricao} onChange={set('descricao')} placeholder="Ex: Venda de pães, compra de farinha..."/></FormField>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
@@ -3053,30 +2473,8 @@ const ModalNovaTransacao = ({open, onClose, data, setData}) => {
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
         <FormField label="Conta"><Select value={form.conta} onChange={set('conta')}>{data.settings.contas.map(c=><option key={c.id}>{c.nome}</option>)}</Select></FormField>
-        <FormField label="Categoria"><Select value={form.categoria} onChange={e=>{setForm(f=>({...f,categoria:e.target.value,insumo_id:'',insumo_qtd:''}));}}><option value="">Selecionar...</option>{(cats[form.tipo]||[]).map(c=><option key={c}>{c}</option>)}</Select></FormField>
+        <FormField label="Categoria"><Select value={form.categoria} onChange={set('categoria')}><option value="">Selecionar...</option>{(cats[form.tipo]||[]).map(c=><option key={c}>{c}</option>)}</Select></FormField>
       </div>
-      {/* Complemento de insumo — aparece quando categoria = Insumos */}
-      {isInsumo && <div style={{background:'#FFF8F0',border:`1.5px solid ${C.amber}`,borderRadius:10,padding:14,marginTop:8}}>
-        <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:10}}>
-          <Package size={15} style={{color:C.amber}}/>
-          <span style={{fontSize:12,fontWeight:700,color:C.primary}}>Reposição de Estoque</span>
-          <span style={{fontSize:10,color:C.navyLight,fontStyle:'italic'}}>— vincule esta compra a um insumo</span>
-        </div>
-        <div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:10}}>
-          <FormField label="Insumo">
-            <Select value={form.insumo_id} onChange={e=>{const ins=data.insumos.find(i=>i.id===parseInt(e.target.value));setForm(f=>({...f,insumo_id:e.target.value,descricao:ins?`Compra de ${ins.nome}`:f.descricao}));}}>
-              <option value="">Selecionar insumo...</option>
-              {data.insumos.map(i=><option key={i.id} value={i.id}>{i.nome} ({i.quantidade}{i.unidade} em estoque)</option>)}
-            </Select>
-          </FormField>
-          <FormField label={`Quantidade${insumoSel?' ('+insumoSel.unidade+')':''}`}>
-            <Input type="number" value={form.insumo_qtd} onChange={set('insumo_qtd')} placeholder="0" min="0" step="0.1"/>
-          </FormField>
-        </div>
-        {insumoSel && form.insumo_qtd && parseFloat(form.insumo_qtd)>0 && <div style={{marginTop:8,padding:'8px 10px',background:'#ECFDF5',borderRadius:6,fontSize:11,color:C.green,fontWeight:600,display:'flex',alignItems:'center',gap:6}}>
-          <Check size={13}/>Ao salvar: {insumoSel.nome} passará de {insumoSel.quantidade}{insumoSel.unidade} → {(insumoSel.quantidade + parseFloat(form.insumo_qtd)).toFixed(1)}{insumoSel.unidade}
-        </div>}
-      </div>}
       <div style={{display:'flex',justifyContent:'flex-end',gap:10,marginTop:8}}>
         <Btn variant='outline' onClick={onClose}>Cancelar</Btn>
         <Btn onClick={save}><Check size={14}/>Salvar Transação</Btn>
@@ -3497,7 +2895,6 @@ export default function TabocaGestao() {
 
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',marginLeft:isMobile?0:168,paddingBottom:isMobile?64:0}}>
         <Header now={liveNow} title={info.title} subtitle={info.subtitle} settings={data.settings} isMobile={isMobile} busca={busca} setBusca={setBusca} buscaAberta={buscaAberta} setBuscaAberta={setBuscaAberta} data={data} setPanel={setPanel} onBuscaSelect={setPanel} onLogout={handleLogout}>
-          {panel==='contabilidade'&&!isMobile&&<button onClick={()=>window.print()} style={{...s.btnSm,background:C.amber,gap:5}}><FileText size={13}/>Exportar PDF</button>}
         </Header>
 
         {panel==='dashboard'&&<PanelDashboard data={data} setData={setData} setPanel={setPanel} openModal={openModal} isMobile={isMobile} now={liveNow}/>}
