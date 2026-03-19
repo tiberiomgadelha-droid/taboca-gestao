@@ -1,5 +1,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useTabocaData } from "./useTabocaData";
+import { supabase, isSupabaseReady } from "./supabaseClient";
 import { BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { LayoutDashboard, BookOpen, Package, ChefHat, Users, MessageSquare, Truck, Bot, Plus, Bell, Search, TrendingUp, TrendingDown, AlertTriangle, ShoppingCart, DollarSign, UserPlus, Activity, ChevronRight, ChevronDown, ChevronUp, X, Check, Edit, Trash2, Eye, EyeOff, MapPin, Phone, Calendar, Clock, ArrowUpRight, ArrowDownRight, FileText, CreditCard, Wallet, Send, RefreshCw, Flame, Package2, Target, MessageCircle, CheckCircle, XCircle, Circle, Settings, Layers, AlertCircle, Filter, Star, Archive, Loader, Home, Instagram, Route, Navigation, Wheat, Coffee, Pizza, ChevronLeft, Info, BarChart2, Building, PieChart as PieIcon, Menu, Receipt, ArrowLeft, Map, GripVertical, LogOut } from "lucide-react";
 
@@ -2820,7 +2822,7 @@ export default function TabocaGestao() {
     } catch { return false; }
   });
   const [panel, setPanel] = useState('dashboard');
-  const [data, setData] = useState(mkData);
+  const { data, setData, loading, supabaseAtivo, inserir, atualizar, deletar } = useTabocaData(mkData);
   const [modal, setModal] = useState(null);
   const [busca, setBusca] = useState('');
   const [buscaAberta, setBuscaAberta] = useState(false);
@@ -2916,4 +2918,7 @@ export default function TabocaGestao() {
       <ModalDefinirMeta open={modal==='definirMeta'} onClose={closeModal} data={data} setData={setData}/>
     </div>
   );
+
+  if (loading || !data) return (<div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100vh',background:'#FAF7F4',fontFamily:'Montserrat,sans-serif'}}><div style={{width:48,height:48,border:'4px solid #D4884A',borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite'}}/><p style={{marginTop:16,color:'#1E2A4A',fontSize:16}}>Carregando dados...</p>{supabaseAtivo&&<p style={{color:'#6B7280',fontSize:12,marginTop:4}}>Conectado ao Supabase</p>}<style>{'@keyframes spin{to{transform:rotate(360deg)}}'}</style></div>);
+
 }
