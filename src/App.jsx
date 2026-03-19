@@ -2615,7 +2615,7 @@ const ModalDefinirMeta = ({open, onClose, data, setData}) => {
 // CREDENTIALS removed - using Supabase Auth (Fase 3 Eixo 2)
 
 const LoginScreen = ({ onLogin }) => {
-  const [usuario, setE-mail] = useState('');
+  const [usuario, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [erro, setErro] = useState('');
   const [loading, setLoading] = useState(false);
@@ -2702,7 +2702,7 @@ const LoginScreen = ({ onLogin }) => {
               </div>
               <input
                 value={usuario}
-                onChange={e=>{setE-mail(e.target.value);setErro('');}}
+                onChange={e=>{setEmail(e.target.value);setErro('');}}
                 onKeyDown={e=>e.key==='Enter'&&handleLogin()}
                 placeholder="Digite seu usuário"
                 disabled={bloqueado}
