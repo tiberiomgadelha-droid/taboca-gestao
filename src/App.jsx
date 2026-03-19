@@ -2615,7 +2615,7 @@ const ModalDefinirMeta = ({open, onClose, data, setData}) => {
 // CREDENTIALS removed - using Supabase Auth (Fase 3 Eixo 2)
 
 const LoginScreen = ({ onLogin }) => {
-  const [usuario, setEmail] = useState('');
+  const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [erro, setErro] = useState('');
   const [loading, setLoading] = useState(false);
@@ -2637,11 +2637,11 @@ const LoginScreen = ({ onLogin }) => {
   }, [bloqueado, countdown]);
 
   const handleLogin = async () => {
-      if (!form.email || !form.senha) { setErro('Preencha todos os campos'); return; }
-      setCarregando(true);
+      if (!email || !senha) { setErro('Preencha todos os campos'); return; }
+      setLoading(true);
       setErro('');
       try {
-        const { error } = await supabase.auth.signInWithPassword({ email: form.email, password: form.senha });
+        const { error } = await supabase.auth.signInWithPassword({ email: email, password: senha });
         if (error) {
           const novasTentativas = tentativas + 1;
           setTentativas(novasTentativas);
@@ -2651,7 +2651,7 @@ const LoginScreen = ({ onLogin }) => {
           onLogin();
         }
       } catch (err) { setErro('Erro de conexao. Tente novamente.'); }
-      setCarregando(false);
+      setLoading(false);
     }
 
   return (
@@ -2701,7 +2701,7 @@ const LoginScreen = ({ onLogin }) => {
                 <Users size={16} color={C.navyLight}/>
               </div>
               <input
-                value={usuario}
+                value={email}
                 onChange={e=>{setEmail(e.target.value);setErro('');}}
                 onKeyDown={e=>e.key==='Enter'&&handleLogin()}
                 placeholder="Digite seu usuário"
