@@ -3,6 +3,74 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { LayoutDashboard, BookOpen, Package, ChefHat, Users, MessageSquare, Truck, Bot, Plus, Bell, Search, TrendingUp, TrendingDown, AlertTriangle, ShoppingCart, DollarSign, UserPlus, Activity, ChevronRight, ChevronDown, ChevronUp, X, Check, Edit, Trash2, Eye, EyeOff, MapPin, Phone, Calendar, Clock, ArrowUpRight, ArrowDownRight, FileText, CreditCard, Wallet, Send, RefreshCw, Flame, Package2, Target, MessageCircle, CheckCircle, XCircle, Circle, Settings, Layers, AlertCircle, Filter, Star, Archive, Loader, Home, Instagram, Route, Navigation, Wheat, Coffee, Pizza, ChevronLeft, Info, BarChart2, Building, PieChart as PieIcon, Menu, Receipt, ArrowLeft, Map, GripVertical, LogOut } from "lucide-react";
 
+import { createClient } from '@supabase/supabase-js';
+
+// Supabase client
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+
+// ═══════════════════════════════════════════════════
+// SUPABASE HELPERS
+// ═══════════════════════════════════════════════════
+const sbInsert = async (table, record) => {
+  const clean = {...record};
+  delete clean.id;
+  const { data, error } = await supabase.from(table).insert(clean).select().single();
+  if (error) { console.error(`sbInsert ${table}:`, error); throw error; }
+  return data;
+};
+
+const sbUpdate = async (table, id, updates) => {
+  const { data, error } = await supabase.from(table).update(updates).eq('id', id).select().single();
+  if (error) { console.error(`sbUpdate ${table}:`, error); throw error; }
+  return data;
+};
+
+const sbDelete = async (table, id) => {
+  const { error } = await supabase.from(table).delete().eq('id', id);
+  if (error) { console.error(`sbDelete ${table}:`, error); throw error; }
+};
+
+const sbUpsertSettings = async (settings) => {
+  const { data, error } = await supabase.from('settings').upsert({id: 1, ...settings}).select().single();
+  if (error) { console.error('sbUpsertSettings:', error); throw error; }
+  return data;
+};
+
+const sbFetchAll = async () => {
+  const tables = ['settings','colaboradores','produtos','insumos','fichas','transactions','producoes','bens','localidades','grupos','clientes','pedidos','mensagens','rotas','fornadas','activity_log','campanhas','whatsapp_config','instagram_config'];
+  const results = {};
+  const promises = tables.map(async (table) => {
+    const { data, error } = await supabase.from(table).select('*').order('id', { ascending: true });
+    if (error) { console.error(`fetch ${table}:`, error); results[table] = []; }
+    else { results[table] = data; }
+  });
+  await Promise.all(promises);
+  return {
+    settings: results.settings?.[0] || {},
+    colaboradores: results.colaboradores || [],
+    produtos: results.produtos || [],
+    insumos: results.insumos || [],
+    fichas: results.fichas || [],
+    transactions: results.transactions || [],
+    producoes: results.producoes || [],
+    bens: results.bens || [],
+    localidades: results.localidades || [],
+    grupos: results.grupos || [],
+    clientes: results.clientes || [],
+    pedidos: results.pedidos || [],
+    mensagens: results.mensagens || [],
+    rotas: results.rotas || [],
+    fornadas: results.fornadas || [],
+    activityLog: (results.activity_log || []).sort((a,b) => new Date(b.data) - new Date(a.data)),
+    campanhas: results.campanhas || [],
+    whatsapp_config: results.whatsapp_config?.[0] || {},
+    instagram_config: results.instagram_config?.[0] || {},
+  };
+};
+
 // ═══════════════════════════════════════════════════
 // MOBILE HOOK
 // ═══════════════════════════════════════════════════
@@ -183,27 +251,27 @@ const mkData = () => ({
     { id:3, tipo:'transacao', descricao:'Venda Pedido #3 — R$ 54,00', data:'2026-03-09T01:53', operador:'TABOCA', icon:'receita' },
     { id:4, tipo:'pedido', descricao:'Novo Pedido #3 — Selva/Jovanka — R$ 54,00', data:'2026-03-09T01:53', operador:'TABOCA', icon:'pedido' },
   ],
+  campanhas: [],
+  whatsapp_config: { id:1, provider:'official', api_url:'https://graph.facebook.com/v18.0', api_token:'', phone_number:'', phone_number_id:'', webhook_secret:'', auto_reply:false },
+  instagram_config: { id:1, page_id:'', access_token:'', ig_user_id:'', webhook_verify_token:'', auto_reply:false },
 });
 
 // ═══════════════════════════════════════════════════
 // LOG ACTIVITY HELPER
 // ═══════════════════════════════════════════════════
 const logActivity = (setData, tipo, descricao, operador='Tiberio') => {
+  const entry = {
+    tipo,
+    descricao,
+    data: new Date().toISOString(),
+    operador,
+    icon: tipo
+  };
   setData(prev => ({
     ...prev,
-    fornadas: [
-    { id:1, data:'2026-03-18', hora_inicio:'07:30', hora_fim:'09:00', tipo:'Pães', encerramento_encomenda:'2026-03-16T21:00' },
-    { id:2, data:'2026-03-21', hora_inicio:'17:00', hora_fim:'21:00', tipo:'Pães + Pizzas', encerramento_encomenda:'2026-03-19T09:00' },
-  ],
-  activityLog: [{
-      id: Date.now(),
-      tipo,
-      descricao,
-      data: new Date().toISOString(),
-      operador,
-      icon: tipo
-    }, ...prev.activityLog]
+    activityLog: [{id: Date.now(), ...entry}, ...prev.activityLog]
   }));
+  sbInsert('activity_log', entry).catch(e => console.error('logActivity error:', e));
 };
 
 // ═══════════════════════════════════════════════════
@@ -379,6 +447,12 @@ const Sidebar = ({active, setActive, unreadCount, onBot, onLogout}) => {
             <div><div style={{fontSize:10,fontWeight:800,color:active==='assistente'?'#fff':C.primary,letterSpacing:'0.08em'}}>TABOCA BOT</div><div style={{fontSize:9,color:active==='assistente'?'rgba(255,255,255,0.7)':C.navyLight}}>Assistente Virtual</div></div>
           </div>
         </div>
+        <div style={{fontSize:10,fontWeight:800,color:C.navyLight,letterSpacing:'0.12em',textTransform:'uppercase',padding:'10px 8px 4px',marginTop:6}}>Comunicação</div>
+        {[{key:'campanhas',label:'Campanhas',icon:Send},{key:'canais',label:'Canais',icon:Settings}].map(({key,label,icon:Icon})=>(
+          <button key={key} onClick={()=>setActive(key)} style={{width:'100%',display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:8,border:'none',cursor:'pointer',background:active===key?C.amber:'transparent',color:active===key?'#fff':C.navyLight,fontWeight:active===key?700:500,fontSize:12,transition:'all 0.15s',marginBottom:1,textAlign:'left'}}>
+            <Icon size={14} style={{flexShrink:0}}/><span>{label}</span>
+          </button>
+        ))}
       </nav>
     </div>
   );
@@ -562,6 +636,25 @@ const PanelDashboard = ({data, setPanel, openModal, now, setData}) => {
         <KPICard icon={AlertTriangle} label="Estoque Baixo / Vencimento Próximo" value={`${alertasEstoque} Produtos em alerta`} color={C.red} badge={alertasEstoque>0?'Crítico':null} onClick={()=>setPanel('estoque')}/>
         <KPICard icon={UserPlus} label="Novos Clientes Adicionados no Mês" value={novosClientesMes} color={C.blue} sub={monthStr}/>
       </div>
+
+      {/* Sugestões Proativas do Agente IA */}
+      {(()=>{
+        const suggestions = getProactiveSuggestions(data);
+        if(suggestions.length === 0) return null;
+        return (
+          <div style={{display:'flex',gap:10,marginBottom:16,overflowX:'auto',paddingBottom:4}}>
+            {suggestions.map((sug,i)=>(
+              <div key={i} onClick={()=>setPanel('assistente')} style={{background:'#fff',border:`1.5px solid ${sug.color}20`,borderRadius:10,padding:'10px 14px',minWidth:220,flex:'0 0 auto',cursor:'pointer',display:'flex',alignItems:'center',gap:10,transition:'box-shadow 0.15s'}} onMouseEnter={e=>e.currentTarget.style.boxShadow=`0 2px 10px ${sug.color}20`} onMouseLeave={e=>e.currentTarget.style.boxShadow='none'}>
+                <span style={{fontSize:18}}>{sug.icon}</span>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:12,fontWeight:600,color:C.navy,lineHeight:1.3}}>{sug.text}</div>
+                  <div style={{fontSize:10,color:C.primary,fontWeight:600,marginTop:2}}>Clique para perguntar ao Bot →</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Middle row */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 320px',gap:16,marginBottom:16}}>
@@ -811,20 +904,25 @@ const PanelContabilidade = ({data, setData, openModal}) => {
     }, 0);
   };
 
-  const saveColab = () => {
+  const saveColab = async () => {
     if(!editColab||!editColab.nome||!editColab.funcao) return;
     const isNew = !data.colaboradores.find(c=>c.id===editColab.id);
-    if(isNew) {
-      setData(prev=>({...prev,colaboradores:[...prev.colaboradores,{...editColab,id:Date.now(),valor_acumulado:0}]}));
-      logActivity(setData,'colaborador',`Novo colaborador: ${editColab.nome}`);
-    } else {
-      setData(prev=>({...prev,colaboradores:prev.colaboradores.map(c=>c.id===editColab.id?editColab:c)}));
-    }
+    try {
+      if(isNew) {
+        const saved = await sbInsert('colaboradores', {nome:editColab.nome, funcao:editColab.funcao, email:editColab.email||'', whatsapp:editColab.whatsapp||'', foto:editColab.foto||'', valor_por_fornada:editColab.valor_por_fornada||null, ativo:editColab.ativo!==false});
+        setData(prev=>({...prev,colaboradores:[...prev.colaboradores, saved]}));
+        logActivity(setData,'colaborador',`Novo colaborador: ${editColab.nome}`);
+      } else {
+        await sbUpdate('colaboradores', editColab.id, editColab);
+        setData(prev=>({...prev,colaboradores:prev.colaboradores.map(c=>c.id===editColab.id?editColab:c)}));
+      }
+    } catch(e) { alert('Erro ao salvar: ' + e.message); }
     setEditColab(null);
   };
-  const deleteColab = (id) => {
+  const deleteColab = async (id) => {
     setData(prev=>({...prev,colaboradores:prev.colaboradores.filter(c=>c.id!==id)}));
     setConfirmDeleteColab(null);
+    sbDelete('colaboradores', id).catch(console.error);
   };
   // Lançar pagamento: gera despesa financeira + zera produções do colaborador
   const lancarPagamento = (col) => {
@@ -842,7 +940,6 @@ const PanelContabilidade = ({data, setData, openModal}) => {
     setData(prev=>({
       ...prev,
       transactions: [transacao, ...prev.transactions],
-      // Marcar produções do colaborador como pagas
       producoes: prev.producoes.map(p => p.operador===col.nome && !p.pago_colaborador ? {...p, pago_colaborador:true} : p),
       activityLog: [{
         id: Date.now()+1, tipo:'transacao',
@@ -850,6 +947,9 @@ const PanelContabilidade = ({data, setData, openModal}) => {
         data: new Date().toISOString(), operador:'Tiberio', icon:'despesa'
       }, ...prev.activityLog]
     }));
+    sbInsert('transactions', {descricao:transacao.descricao,data:transacao.data,conta:transacao.conta,categoria:transacao.categoria,tipo:transacao.tipo,valor:transacao.valor}).catch(console.error);
+    // Mark producoes as paid in Supabase
+    data.producoes.filter(p=>p.operador===col.nome&&!p.pago_colaborador).forEach(p=>sbUpdate('producoes',p.id,{pago_colaborador:true}).catch(console.error));
     setConfirmPagColab(null);
     logActivity(setData,'colaborador',`Pagamento lançado: ${col.nome} — ${fmtCurrency(valorAcum)}`);
   };
@@ -1435,22 +1535,30 @@ const PanelEstoque = ({data, setData, openModal, isMobile}) => {
   const prod = fichaModal ? data.produtos.find(p=>p.id===fichaModal) : null;
 
   // Save edit item
-  const saveEditItem = () => {
+  const saveEditItem = async () => {
     if(!editItem) return;
-    if(editIsInsumo) {
-      setData(prev=>({...prev,insumos:prev.insumos.map(i=>i.id===editItem.id?editItem:i)}));
-    } else {
-      setData(prev=>({...prev,produtos:prev.produtos.map(p=>p.id===editItem.id?editItem:p)}));
-    }
+    try {
+      if(editIsInsumo) {
+        await sbUpdate('insumos', editItem.id, editItem);
+        setData(prev=>({...prev,insumos:prev.insumos.map(i=>i.id===editItem.id?editItem:i)}));
+      } else {
+        await sbUpdate('produtos', editItem.id, editItem);
+        setData(prev=>({...prev,produtos:prev.produtos.map(p=>p.id===editItem.id?editItem:p)}));
+      }
+    } catch(e) { alert('Erro ao salvar: ' + e.message); }
     setEditItem(null);
   };
-  const deleteEditItem = () => {
+  const deleteEditItem = async () => {
     if(!editItem||!confirm('Tem certeza? Esta ação não pode ser desfeita.')) return;
-    if(editIsInsumo) {
-      setData(prev=>({...prev,insumos:prev.insumos.filter(i=>i.id!==editItem.id)}));
-    } else {
-      setData(prev=>({...prev,produtos:prev.produtos.filter(p=>p.id!==editItem.id)}));
-    }
+    try {
+      if(editIsInsumo) {
+        await sbDelete('insumos', editItem.id);
+        setData(prev=>({...prev,insumos:prev.insumos.filter(i=>i.id!==editItem.id)}));
+      } else {
+        await sbDelete('produtos', editItem.id);
+        setData(prev=>({...prev,produtos:prev.produtos.filter(p=>p.id!==editItem.id)}));
+      }
+    } catch(e) { alert('Erro ao deletar: ' + e.message); }
     setEditItem(null);
   };
   const createNewItem = (isInsumo) => {
@@ -1460,18 +1568,22 @@ const PanelEstoque = ({data, setData, openModal, isMobile}) => {
     setEditItem(newItem);
     setEditIsInsumo(isInsumo);
   };
-  const saveNewItem = () => {
+  const saveNewItem = async () => {
     if(!editItem||!editItem.nome) return;
-    if(editIsInsumo) {
-      setData(prev=>({...prev,insumos:[...prev.insumos,editItem]}));
-    } else {
-      setData(prev=>({...prev,produtos:[...prev.produtos,editItem]}));
-    }
+    try {
+      if(editIsInsumo) {
+        const saved = await sbInsert('insumos', editItem);
+        setData(prev=>({...prev,insumos:[...prev.insumos,saved]}));
+      } else {
+        const saved = await sbInsert('produtos', editItem);
+        setData(prev=>({...prev,produtos:[...prev.produtos,saved]}));
+      }
+    } catch(e) { alert('Erro ao criar: ' + e.message); }
     setEditItem(null);
   };
 
   // Save movimentação
-  const saveMovimentacao = () => {
+  const saveMovimentacao = async () => {
     const qty = parseFloat(movForm.quantidade);
     if(!movForm.item_id||!qty) return;
     const itemId = parseInt(movForm.item_id);
@@ -1487,6 +1599,13 @@ const PanelEstoque = ({data, setData, openModal, isMobile}) => {
       const newQty = movForm.tipo==='entrada' ? item.quantidade+qty : Math.max(0,item.quantidade-qty);
       return {...prev,[arr]:updated,activityLog:[{id:Date.now(),tipo:'estoque',descricao:`${movForm.tipo==='entrada'?'Entrada':'Saída'} ${qty} ${item.nome}`,data:new Date().toISOString(),operador:movForm.operador,icon:movForm.tipo==='entrada'?'receita':'despesa'},...prev.activityLog]};
     });
+    const table = isProd ? 'produtos' : 'insumos';
+    const item = data[isProd?'produtos':'insumos'].find(i=>i.id===itemId);
+    if(item) {
+      const newQty = movForm.tipo==='entrada' ? item.quantidade+qty : Math.max(0,item.quantidade-qty);
+      sbUpdate(table, itemId, {quantidade: newQty}).catch(console.error);
+      sbInsert('activity_log', {tipo:'estoque',descricao:`${movForm.tipo==='entrada'?'Entrada':'Saída'} ${qty} ${item.nome}`,data:new Date().toISOString(),operador:movForm.operador,icon:movForm.tipo==='entrada'?'receita':'despesa'}).catch(console.error);
+    }
     if(movForm.tipo==='saída'){
       const isProd2 = movForm.item_type==='produto';
       const item = data[isProd2?'produtos':'insumos'].find(i=>i.id===parseInt(movForm.item_id));
@@ -1567,6 +1686,26 @@ const PanelEstoque = ({data, setData, openModal, isMobile}) => {
       const fichasAtualizadas = isEdit
         ? prev.fichas.map(f => f.id === fichaForm.id ? {...newFicha, id: fichaForm.id} : f)
         : [...prev.fichas, newFicha];
+      // Persist fichas + produtos to Supabase
+      const fichaToSave = {...newFicha, foto_principal:undefined, fotos_secundarias:undefined};
+      delete fichaToSave.foto_principal; delete fichaToSave.fotos_secundarias;
+      if(isEdit) {
+        sbUpdate('fichas', fichaForm.id, fichaToSave).catch(console.error);
+      } else {
+        sbInsert('fichas', fichaToSave).then(saved => {
+          setData(p => ({...p, fichas: p.fichas.map(f => f.id === newFicha.id ? {...f, id: saved.id} : f)}));
+        }).catch(console.error);
+      }
+      if(!fichaForm.produto_id && fichaForm.nome_produto) {
+        // New product was created - persist it
+        const novoProdClean = prods.find(p => p.id === produtoId);
+        if(novoProdClean) sbInsert('produtos', novoProdClean).then(saved => {
+          setData(p => ({...p, produtos: p.produtos.map(pr => pr.id === produtoId ? {...pr, id: saved.id} : pr)}));
+        }).catch(console.error);
+      } else if(fichaForm.produto_id) {
+        const updatedProd = prods.find(p => p.id === parseInt(fichaForm.produto_id));
+        if(updatedProd) sbUpdate('produtos', updatedProd.id, updatedProd).catch(console.error);
+      }
       return {...prev,fichas:fichasAtualizadas,produtos:prods};
     });
     setShowNovaFicha(false);
@@ -1961,6 +2100,18 @@ const PanelProducao = ({data, setData, openModal}) => {
       return newData;
     });
 
+    // Persist to Supabase
+    const prodRecordClean = {data:new Date().toISOString().slice(0,10),produto_id:prodId,quantidade:qtdProd,operador:producaoForm.operador,observacao:producaoForm.observacao,etapas_producao:producaoForm.etapas_producao||[],pago_colaborador:false};
+    sbInsert('producoes', prodRecordClean).catch(console.error);
+    sbUpdate('produtos', prodId, {quantidade: (prod?.quantidade||0)+qtdProd}).catch(console.error);
+    if(ficha?.ingredientes) {
+      ficha.ingredientes.forEach(ing => {
+        const ins = data.insumos.find(i=>i.id===ing.insumo_id);
+        if(ins) sbUpdate('insumos', ins.id, {quantidade: Math.max(0, ins.quantidade - ing.quantidade*qtdProd)}).catch(console.error);
+      });
+    }
+    sbInsert('activity_log', {tipo:'producao',descricao:`Produção: ${qtdProd}x ${prod?.nome||'?'} — ${producaoForm.operador}`,data:new Date().toISOString(),operador:producaoForm.operador,icon:'producao'}).catch(console.error);
+
     setShowNovaProducao(false);
     setProducaoForm({produto_id:'',quantidade:'',observacao:'',operador:data.colaboradores[0]?.nome||'',etapas_producao:[]});
   };
@@ -1971,9 +2122,14 @@ const PanelProducao = ({data, setData, openModal}) => {
     if(!f.data) return;
     if(isEdit) {
       setData(prev=>({...prev,fornadas:prev.fornadas.map(ff=>ff.id===f.id?f:ff)}));
+      sbUpdate('fornadas', f.id, f).catch(console.error);
       setEditFornada(null);
     } else {
-      setData(prev=>({...prev,fornadas:[...prev.fornadas,{...f,id:Date.now()}]}));
+      const tempId = Date.now();
+      setData(prev=>({...prev,fornadas:[...prev.fornadas,{...f,id:tempId}]}));
+      sbInsert('fornadas', f).then(saved => {
+        setData(p=>({...p,fornadas:p.fornadas.map(ff=>ff.id===tempId?{...ff,id:saved.id}:ff)}));
+      }).catch(console.error);
       setShowNovaFornada(false);
       setFornadaForm({data:'',hora_inicio:'',hora_fim:'',tipo:'Pães',encerramento_encomenda:''});
     }
@@ -2170,7 +2326,7 @@ const PanelProducao = ({data, setData, openModal}) => {
                   <div style={{fontWeight:700,color:C.primary,fontSize:12}}>{fmtDate(f.data)} — {f.hora_inicio}–{f.hora_fim}</div>
                   <div style={{display:'flex',gap:4}}>
                     <button onClick={()=>setEditFornada({...f})} style={{border:'none',background:'none',cursor:'pointer',padding:2}}><Edit size={12} color={C.navyLight}/></button>
-                    <button onClick={()=>{if(confirm('Excluir esta fornada?'))setData(prev=>({...prev,fornadas:prev.fornadas.filter(ff=>ff.id!==f.id)}));}} style={{border:'none',background:'none',cursor:'pointer',padding:2}}><Trash2 size={12} color={C.red}/></button>
+                    <button onClick={()=>{if(confirm('Excluir esta fornada?')){setData(prev=>({...prev,fornadas:prev.fornadas.filter(ff=>ff.id!==f.id)}));sbDelete('fornadas',f.id).catch(console.error);}}} style={{border:'none',background:'none',cursor:'pointer',padding:2}}><Trash2 size={12} color={C.red}/></button>
                   </div>
                 </div>
                 <div style={{fontSize:11,color:C.navyLight}}>{f.tipo}</div>
@@ -2219,11 +2375,19 @@ const PanelClientes = ({data, setData, openModal, isMobile}) => {
     e.preventDefault();
     if(!dragItem) return;
     const {clienteId, grupoAntigoId} = dragItem;
-    setData(prev=>({...prev, grupos: prev.grupos.map(g=>{
-      if(g.id===grupoAntigoId) return {...g, lista_cliente_ids:g.lista_cliente_ids.filter(id=>id!==clienteId)};
-      if(g.id===novoGrupoId) return {...g, lista_cliente_ids:[...g.lista_cliente_ids, clienteId]};
-      return g;
-    }), clientes: prev.clientes.map(c=>c.id===clienteId?{...c,grupo_id:novoGrupoId}:c)}));
+    setData(prev=>{
+      const grupoAntigo = prev.grupos.find(g=>g.id===grupoAntigoId);
+      const grupoNovo = prev.grupos.find(g=>g.id===novoGrupoId);
+      // Persist to Supabase
+      if(grupoAntigo) sbUpdate('grupos', grupoAntigoId, {lista_cliente_ids: grupoAntigo.lista_cliente_ids.filter(id=>id!==clienteId)}).catch(console.error);
+      if(grupoNovo) sbUpdate('grupos', novoGrupoId, {lista_cliente_ids: [...grupoNovo.lista_cliente_ids, clienteId]}).catch(console.error);
+      sbUpdate('clientes', clienteId, {grupo_id: novoGrupoId}).catch(console.error);
+      return {...prev, grupos: prev.grupos.map(g=>{
+        if(g.id===grupoAntigoId) return {...g, lista_cliente_ids:g.lista_cliente_ids.filter(id=>id!==clienteId)};
+        if(g.id===novoGrupoId) return {...g, lista_cliente_ids:[...g.lista_cliente_ids, clienteId]};
+        return g;
+      }), clientes: prev.clientes.map(c=>c.id===clienteId?{...c,grupo_id:novoGrupoId}:c)};
+    });
     setDragItem(null); setDragOver(null);
   };
 
@@ -2255,14 +2419,28 @@ const PanelClientes = ({data, setData, openModal, isMobile}) => {
     const exists = data.clientes.find(c=>c.id===editCliente.id);
     if(exists){
       setData(prev=>({...prev,clientes:prev.clientes.map(c=>c.id===editCliente.id?editCliente:c)}));
+      sbUpdate('clientes', editCliente.id, editCliente).catch(console.error);
     } else {
-      setData(prev=>({...prev,clientes:[...prev.clientes,{...editCliente,data_cadastro:NOW.toISOString().slice(0,10)}],grupos:prev.grupos.map(g=>g.id===editCliente.grupo_id?{...g,lista_cliente_ids:[...g.lista_cliente_ids,editCliente.id]}:g)}));
+      const tempId = editCliente.id || Date.now();
+      const newCli = {...editCliente, id: tempId, data_cadastro:NOW.toISOString().slice(0,10)};
+      setData(prev=>({...prev,clientes:[...prev.clientes,newCli],grupos:prev.grupos.map(g=>g.id===editCliente.grupo_id?{...g,lista_cliente_ids:[...g.lista_cliente_ids,tempId]}:g)}));
+      sbInsert('clientes', {...newCli, id:undefined}).then(saved => {
+        setData(p=>({...p,clientes:p.clientes.map(c=>c.id===tempId?{...c,id:saved.id}:c),grupos:p.grupos.map(g=>({...g,lista_cliente_ids:g.lista_cliente_ids.map(id=>id===tempId?saved.id:id)}))}));
+        const grupo = data.grupos.find(g=>g.id===editCliente.grupo_id);
+        if(grupo) sbUpdate('grupos', grupo.id, {lista_cliente_ids:[...grupo.lista_cliente_ids, saved.id]}).catch(console.error);
+      }).catch(console.error);
     }
     setEditCliente(null);
   };
   const deleteCliente = () => {
     if(!editCliente||!confirm('Tem certeza? Esta ação não pode ser desfeita.')) return;
     setData(prev=>({...prev,clientes:prev.clientes.filter(c=>c.id!==editCliente.id),grupos:prev.grupos.map(g=>({...g,lista_cliente_ids:g.lista_cliente_ids.filter(id=>id!==editCliente.id)}))}));
+    sbDelete('clientes', editCliente.id).catch(console.error);
+    data.grupos.forEach(g => {
+      if(g.lista_cliente_ids.includes(editCliente.id)) {
+        sbUpdate('grupos', g.id, {lista_cliente_ids: g.lista_cliente_ids.filter(id=>id!==editCliente.id)}).catch(console.error);
+      }
+    });
     setEditCliente(null);
   };
 
@@ -2428,9 +2606,18 @@ const PanelClientes = ({data, setData, openModal, isMobile}) => {
 // ═══════════════════════════════════════════════════
 // PANEL: ATENDIMENTO
 // ═══════════════════════════════════════════════════
-const PanelAtendimento = ({data, setData}) => {
+const PanelAtendimento = ({data, setData, isMobile}) => {
   const [selCliente, setSelCliente] = useState(null);
   const [filtro, setFiltro] = useState('todos');
+  const [msgInput, setMsgInput] = useState('');
+  const [aiSuggestion, setAiSuggestion] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [autoReply, setAutoReply] = useState({whatsapp: false, instagram: false});
+  const [showStats, setShowStats] = useState(false);
+  const [showInbox, setShowInbox] = useState(true);
+  const endRef = useRef(null);
+
+  useEffect(()=>{ endRef.current?.scrollIntoView({behavior:'smooth'}); }, [selCliente, data.mensagens]);
 
   const convs = {};
   data.mensagens.forEach(m=>{
@@ -2447,23 +2634,96 @@ const PanelAtendimento = ({data, setData}) => {
 
   const unread = data.mensagens.filter(m=>m.status==='nao_lida').length;
 
+  // Estatísticas do Agente 2
+  const aiStats = useMemo(()=>{
+    const aiMsgs = data.mensagens.filter(m=>!m.de_cliente && (m.origem==='ia_automatico'||m.origem==='ia_assistido'));
+    const totalRespondidas = aiMsgs.length;
+    const pedidosIA = data.pedidos.filter(p=>p.observacoes?.includes('atendimento automático')).length;
+    return { totalRespondidas, pedidosIA };
+  }, [data.mensagens, data.pedidos]);
+
+  // Gerar resposta com IA (Agente 2)
+  const gerarRespostaIA = async () => {
+    if(!selCliente||aiLoading) return;
+    const ultimaMsgCliente = [...selMsgs].reverse().find(m=>m.de_cliente);
+    if(!ultimaMsgCliente) return;
+    setAiLoading(true);
+    setAiSuggestion('');
+    try {
+      const canal = ultimaMsgCliente.canal || 'whatsapp';
+      const history = selMsgs.slice(-6).map(m=>({role: m.de_cliente?'user':'assistant', content: m.conteudo}));
+      const result = await callAgentAtendente(selCliente, ultimaMsgCliente.conteudo, canal, history.slice(0,-1));
+      setAiSuggestion(result.resposta || 'Não foi possível gerar resposta.');
+    } catch(e) {
+      console.error('AI suggestion error:', e);
+      setAiSuggestion('Erro ao gerar sugestão. Verifique a configuração do agente.');
+    }
+    setAiLoading(false);
+  };
+
+  // Enviar mensagem (manual ou aprovação de IA)
+  const enviarMensagem = (texto) => {
+    const content = texto || msgInput.trim();
+    if(!content || !selCliente) return;
+    const novaMensagem = {
+      id: Date.now(),
+      cliente_id: selCliente,
+      canal: selMsgs[selMsgs.length-1]?.canal || 'whatsapp',
+      data_hora: new Date().toISOString(),
+      conteudo: content,
+      status: 'enviada',
+      de_cliente: false,
+      origem: texto ? 'ia_assistido' : 'manual',
+    };
+    setData(prev=>({...prev, mensagens:[...prev.mensagens, novaMensagem]}));
+    sbInsert('mensagens', {cliente_id:novaMensagem.cliente_id,canal:novaMensagem.canal,data_hora:novaMensagem.data_hora,conteudo:novaMensagem.conteudo,status:'enviada',de_cliente:false,origem:novaMensagem.origem}).catch(console.error);
+    setMsgInput('');
+    setAiSuggestion('');
+    logActivity(setData, 'mensagem', `Mensagem enviada para ${selCli?.nome||'cliente'} via ${novaMensagem.canal}`, 'Tiberio');
+  };
+
   return (
-    <div style={{flex:1,display:'flex',overflow:'hidden'}}>
+    <div style={{flex:1,display:'flex',overflow:'hidden',flexDirection:isMobile?'column':'row'}}>
       {/* Inbox */}
-      <div style={{width:300,borderRight:`1px solid ${C.border}`,display:'flex',flexDirection:'column',background:'#fff'}}>
+      {(!isMobile || showInbox) && (
+      <div style={{width:isMobile?'100%':300,borderRight:isMobile?'none':`1px solid ${C.border}`,display:'flex',flexDirection:'column',background:'#fff',maxHeight:isMobile&&selCliente?0:'100%',overflow:isMobile&&selCliente?'hidden':'visible'}}>
         <div style={{padding:'14px 16px',borderBottom:`1px solid ${C.border}`}}>
-          <div style={{fontWeight:700,color:C.navy,fontSize:14,marginBottom:8}}>Inbox {unread>0&&<Badge color='red'>{unread} não lidas</Badge>}</div>
-          <div style={{display:'flex',gap:4}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+            <div style={{fontWeight:700,color:C.navy,fontSize:14,flex:1}}>Inbox {unread>0&&<Badge color='red'>{unread} novas</Badge>}</div>
+            <button onClick={()=>setShowStats(!showStats)} style={{border:`1px solid ${C.border}`,background:showStats?C.primary:'#fff',color:showStats?'#fff':C.navyLight,borderRadius:5,padding:'3px 7px',cursor:'pointer',fontSize:10,fontWeight:600}}><BarChart2 size={11}/></button>
+          </div>
+          <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
             {[{k:'todos',l:'Todos'},{k:'whatsapp',l:'WhatsApp'},{k:'instagram',l:'Instagram'},{k:'nao_lida',l:'Não lidas'}].map(({k,l})=>(
               <button key={k} onClick={()=>setFiltro(k)} style={{border:`1px solid ${filtro===k?C.primary:C.border}`,background:filtro===k?C.primary:'#fff',color:filtro===k?'#fff':C.navyLight,borderRadius:5,padding:'3px 7px',cursor:'pointer',fontSize:10,fontWeight:600}}>{l}</button>
             ))}
           </div>
+          {/* Toggle atendimento automático */}
+          <div style={{marginTop:10,padding:'8px 10px',background:'#F9F6F4',borderRadius:8}}>
+            <div style={{fontSize:10,fontWeight:700,color:C.navyLight,marginBottom:6,textTransform:'uppercase',letterSpacing:'0.08em'}}>Atendimento Automático</div>
+            <div style={{display:'flex',gap:10}}>
+              {['whatsapp','instagram'].map(canal=>(
+                <label key={canal} style={{display:'flex',alignItems:'center',gap:4,cursor:'pointer',fontSize:11,fontWeight:600,color:autoReply[canal]?C.green:C.navyLight}}>
+                  <input type="checkbox" checked={autoReply[canal]} onChange={e=>setAutoReply(p=>({...p,[canal]:e.target.checked}))} style={{accentColor:C.green}}/>
+                  {canal==='whatsapp'?'💬':'📷'} {canal.charAt(0).toUpperCase()+canal.slice(1)}
+                </label>
+              ))}
+            </div>
+          </div>
         </div>
+        {/* Stats panel */}
+        {showStats && (
+          <div style={{padding:'12px 16px',borderBottom:`1px solid ${C.border}`,background:'#F9F6F4'}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+              <div style={{...s.cardSm,textAlign:'center',padding:10}}><div style={{fontSize:9,color:C.navyLight,fontWeight:700,textTransform:'uppercase'}}>Respostas IA</div><div style={{fontSize:18,fontWeight:800,color:C.primary}}>{aiStats.totalRespondidas}</div></div>
+              <div style={{...s.cardSm,textAlign:'center',padding:10}}><div style={{fontSize:9,color:C.navyLight,fontWeight:700,textTransform:'uppercase'}}>Pedidos via IA</div><div style={{fontSize:18,fontWeight:800,color:C.green}}>{aiStats.pedidosIA}</div></div>
+            </div>
+          </div>
+        )}
         <div style={{flex:1,overflowY:'auto'}}>
           {convList.map(conv=>{
             const cli=data.clientes.find(c=>c.id===conv.cliente_id);
             const hasUnread=conv.msgs.some(m=>m.status==='nao_lida');
-            return <div key={conv.cliente_id} onClick={()=>{setSelCliente(conv.cliente_id);setData(prev=>({...prev,mensagens:prev.mensagens.map(m=>m.cliente_id===conv.cliente_id?{...m,status:'lida'}:m)}));}} style={{padding:'12px 16px',borderBottom:`1px solid ${C.borderLight}`,cursor:'pointer',background:selCliente===conv.cliente_id?'#FEF3EA':'#fff',transition:'background 0.1s'}}>
+            return <div key={conv.cliente_id} onClick={()=>{setSelCliente(conv.cliente_id);if(isMobile)setShowInbox(false);setData(prev=>{const unread=prev.mensagens.filter(m=>m.cliente_id===conv.cliente_id&&m.status==='nao_lida');unread.forEach(m=>sbUpdate('mensagens',m.id,{status:'lida'}).catch(console.error));return{...prev,mensagens:prev.mensagens.map(m=>m.cliente_id===conv.cliente_id?{...m,status:'lida'}:m)};});}} style={{padding:'12px 16px',borderBottom:`1px solid ${C.borderLight}`,cursor:'pointer',background:selCliente===conv.cliente_id?'#FEF3EA':'#fff',transition:'background 0.1s'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
                 <div style={{display:'flex',alignItems:'center',gap:8}}>
                   <div style={{width:34,height:34,borderRadius:17,background:hasUnread?C.primary:'#EEE',display:'flex',alignItems:'center',justifyContent:'center',color:hasUnread?'#fff':C.navyLight,fontSize:13,fontWeight:700,flexShrink:0}}>{cli?.nome?.[0]||'?'}</div>
@@ -2477,17 +2737,20 @@ const PanelAtendimento = ({data, setData}) => {
               <div style={{fontSize:11,color:C.navyLight,marginTop:4,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',paddingLeft:42}}>{conv.ultima.conteudo}</div>
             </div>;
           })}
+          {convList.length===0&&<div style={{padding:20,textAlign:'center',color:C.navyLight,fontSize:12}}>Nenhuma conversa encontrada.</div>}
         </div>
       </div>
+      )}
 
       {/* Conversation */}
       {selCliente?(
         <div style={{flex:1,display:'flex',flexDirection:'column',background:'#F9F6F4'}}>
           <div style={{background:'#fff',borderBottom:`1px solid ${C.border}`,padding:'12px 20px',display:'flex',alignItems:'center',gap:12}}>
+            {isMobile&&<button onClick={()=>{setShowInbox(true);setSelCliente(null);}} style={{border:'none',background:'none',cursor:'pointer',padding:4}}><ArrowLeft size={18} color={C.navy}/></button>}
             <div style={{width:36,height:36,borderRadius:18,background:'#FEF3EA',display:'flex',alignItems:'center',justifyContent:'center',fontSize:15,fontWeight:700,color:C.primary}}>{selCli?.nome?.[0]}</div>
-            <div><div style={{fontWeight:700,color:C.navy}}>{selCli?.nome}</div><div style={{fontSize:11,color:C.navyLight}}>{selCli?.whatsapp} {selCli?.instagram&&'· '+selCli?.instagram}</div></div>
-            <div style={{marginLeft:'auto',display:'flex',gap:8}}>
-              {data.pedidos.filter(p=>p.cliente_id===selCliente&&p.status_entrega!=='entregue').length>0&&<Badge color='yellow'>{data.pedidos.filter(p=>p.cliente_id===selCliente&&p.status_entrega!=='entregue').length} pedido(s) em aberto</Badge>}
+            <div style={{flex:1}}><div style={{fontWeight:700,color:C.navy}}>{selCli?.nome}</div><div style={{fontSize:11,color:C.navyLight}}>{selCli?.whatsapp} {selCli?.instagram&&'· '+selCli?.instagram}</div></div>
+            <div style={{display:'flex',gap:8,alignItems:'center'}}>
+              {data.pedidos.filter(p=>p.cliente_id===selCliente&&p.status_entrega!=='entregue').length>0&&<Badge color='yellow'>{data.pedidos.filter(p=>p.cliente_id===selCliente&&p.status_entrega!=='entregue').length} pedido(s)</Badge>}
             </div>
           </div>
           <div style={{flex:1,overflowY:'auto',padding:'16px 20px',display:'flex',flexDirection:'column',gap:8}}>
@@ -2495,20 +2758,46 @@ const PanelAtendimento = ({data, setData}) => {
               <div key={m.id} style={{display:'flex',justifyContent:m.de_cliente?'flex-start':'flex-end'}}>
                 <div style={{maxWidth:'70%',background:m.de_cliente?'#fff':C.primary,color:m.de_cliente?C.navy:'#fff',borderRadius:m.de_cliente?'4px 12px 12px 12px':'12px 4px 12px 12px',padding:'10px 14px',boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
                   <div style={{fontSize:13,lineHeight:1.5}}>{m.conteudo}</div>
-                  <div style={{fontSize:9,marginTop:4,opacity:0.7,textAlign:'right'}}>{fmtDateTime(m.data_hora)} {!m.de_cliente&&'✓✓'}</div>
+                  <div style={{fontSize:9,marginTop:4,opacity:0.7,textAlign:'right',display:'flex',alignItems:'center',gap:4,justifyContent:'flex-end'}}>
+                    {fmtDateTime(m.data_hora)} {!m.de_cliente&&'✓✓'}
+                    {!m.de_cliente && m.origem && m.origem!=='manual' && <span style={{background:'rgba(255,255,255,0.2)',borderRadius:3,padding:'1px 4px',fontSize:8}}>🤖 IA</span>}
+                  </div>
                 </div>
               </div>
             ))}
+            <div ref={endRef}/>
           </div>
-          <div style={{background:'#fff',borderTop:`1px solid ${C.border}`,padding:'12px 20px',display:'flex',gap:8}}>
-            <input placeholder="Digite uma mensagem..." style={{...s.input,flex:1}}/>
-            <Btn><Send size={14}/>Enviar</Btn>
+
+          {/* AI Suggestion Preview */}
+          {aiSuggestion && (
+            <div style={{background:'#FFF8F0',borderTop:`2px solid ${C.amber}`,padding:'12px 20px'}}>
+              <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
+                <Bot size={14} color={C.primary}/>
+                <span style={{fontSize:11,fontWeight:700,color:C.primary}}>Sugestão do Agente IA</span>
+                <button onClick={()=>setAiSuggestion('')} style={{marginLeft:'auto',border:'none',background:'none',cursor:'pointer'}}><X size={12} color={C.navyLight}/></button>
+              </div>
+              <div style={{background:'#fff',borderRadius:8,padding:'10px 14px',fontSize:13,lineHeight:1.5,color:C.navy,border:`1px solid ${C.border}`,marginBottom:8}}>{aiSuggestion}</div>
+              <div style={{display:'flex',gap:8}}>
+                <Btn onClick={()=>enviarMensagem(aiSuggestion)} style={{flex:1,justifyContent:'center'}}><Send size={12}/>Aprovar e Enviar</Btn>
+                <Btn variant='outline' onClick={()=>{setMsgInput(aiSuggestion);setAiSuggestion('');}} style={{flex:1,justifyContent:'center'}}><Edit size={12}/>Editar</Btn>
+              </div>
+            </div>
+          )}
+
+          <div style={{background:'#fff',borderTop:`1px solid ${C.border}`,padding:'12px 20px',display:'flex',gap:8,alignItems:'flex-end'}}>
+            <button onClick={gerarRespostaIA} disabled={aiLoading} style={{...s.btnSm,background:C.amber,height:38,paddingInline:12}} title="Gerar resposta com IA">
+              {aiLoading ? <Loader size={13} style={{animation:'pulse 1s infinite'}}/> : <Bot size={13}/>}
+              <span style={{fontSize:11}}>IA</span>
+            </button>
+            <input value={msgInput} onChange={e=>setMsgInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();enviarMensagem();}}} placeholder="Digite uma mensagem..." style={{...s.input,flex:1}}/>
+            <Btn onClick={()=>enviarMensagem()} disabled={!msgInput.trim()} style={{height:38}}><Send size={14}/>Enviar</Btn>
           </div>
         </div>
       ):(
         <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',background:'#F9F6F4',flexDirection:'column',gap:12}}>
           <MessageCircle size={40} color={C.borderLight}/>
           <div style={{fontSize:14,color:C.navyLight,fontWeight:600}}>Selecione uma conversa</div>
+          <div style={{fontSize:11,color:C.navyLight}}>Use o botão 🤖 IA para gerar respostas automáticas</div>
         </div>
       )}
     </div>
@@ -2555,6 +2844,9 @@ const PanelPedidos = ({data, setData, openModal, isMobile}) => {
       if(rotaId==='retirada'){
         pedidos = pedidos.map(p=>p.id===dragPed?{...p,localidade_id:4}:p);
       }
+      // Persist rota changes to Supabase
+      rotas.forEach(r => sbUpdate('rotas', r.id, {lista_pedido_ids: r.lista_pedido_ids}).catch(console.error));
+      if(rotaId==='retirada') sbUpdate('pedidos', dragPed, {localidade_id:4}).catch(console.error);
       return {...prev,rotas,pedidos};
     });
     setDragPed(null); setDragRotaOver(null);
@@ -2569,19 +2861,28 @@ const PanelPedidos = ({data, setData, openModal, isMobile}) => {
     const wasNotEntregue = old && old.status_entrega !== 'entregue';
     const nowEntregue = editPedido.status_entrega === 'entregue';
 
+    // Persist pedido update to Supabase
+    sbUpdate('pedidos', editPedido.id, editPedido).catch(console.error);
+
     setData(prev=>{
       let newData = {...prev, pedidos:prev.pedidos.map(p=>p.id===editPedido.id?editPedido:p)};
       // Se marcou como entregue, remove de todas as rotas
       if(nowEntregue && wasNotEntregue){
         newData.rotas = newData.rotas.map(r=>({...r,lista_pedido_ids:r.lista_pedido_ids.filter(id=>id!==editPedido.id)}));
+        newData.rotas.forEach(r => {
+          if(r.lista_pedido_ids.includes(editPedido.id)) sbUpdate('rotas', r.id, {lista_pedido_ids: r.lista_pedido_ids.filter(id=>id!==editPedido.id)}).catch(console.error);
+        });
       }
       // Se confirmou pagamento, gera transação financeira
       if(nowPaid && wasNotPaid){
         const cli = prev.clientes.find(c=>c.id===editPedido.cliente_id);
         const loc = prev.localidades.find(l=>l.id===editPedido.localidade_id);
         const cat = editPedido.localidade_id===4 ? 'Vendas Retirada' : 'Vendas Delivery';
-        newData.transactions = [{id:Date.now(),descricao:`Venda Pedido #${editPedido.id} - ${cli?.nome||'Cliente'}`,data:new Date().toISOString(),conta:'PIX',categoria:cat,tipo:'receita',valor:editPedido.valor_total},...newData.transactions];
+        const txn = {descricao:`Venda Pedido #${editPedido.id} - ${cli?.nome||'Cliente'}`,data:new Date().toISOString(),conta:'PIX',categoria:cat,tipo:'receita',valor:editPedido.valor_total};
+        newData.transactions = [{id:Date.now(),...txn},...newData.transactions];
         newData.activityLog = [{id:Date.now(),tipo:'transacao',descricao:`Venda Pedido #${editPedido.id} - ${cli?.nome} — +R$${editPedido.valor_total.toFixed(2)}`,data:new Date().toISOString(),operador:'TABOCA',icon:'receita'},...newData.activityLog];
+        sbInsert('transactions', txn).catch(console.error);
+        sbInsert('activity_log', {tipo:'transacao',descricao:`Venda Pedido #${editPedido.id} - ${cli?.nome} — +R$${editPedido.valor_total.toFixed(2)}`,data:new Date().toISOString(),operador:'TABOCA',icon:'receita'}).catch(console.error);
       }
       return newData;
     });
@@ -2589,6 +2890,10 @@ const PanelPedidos = ({data, setData, openModal, isMobile}) => {
   };
   const deleteEditPedido = () => {
     if(!editPedido||!confirm('Tem certeza? Esta ação não pode ser desfeita.')) return;
+    sbDelete('pedidos', editPedido.id).catch(console.error);
+    data.rotas.forEach(r => {
+      if(r.lista_pedido_ids.includes(editPedido.id)) sbUpdate('rotas', r.id, {lista_pedido_ids:r.lista_pedido_ids.filter(id=>id!==editPedido.id)}).catch(console.error);
+    });
     setData(prev=>({...prev,pedidos:prev.pedidos.filter(p=>p.id!==editPedido.id),rotas:prev.rotas.map(r=>({...r,lista_pedido_ids:r.lista_pedido_ids.filter(id=>id!==editPedido.id)}))}));
     setEditPedido(null);
   };
@@ -2596,24 +2901,36 @@ const PanelPedidos = ({data, setData, openModal, isMobile}) => {
   // Nova rota
   const criarNovaRota = () => {
     if(!novaRotaForm.nome) return;
-    setData(prev=>({...prev,rotas:[...prev.rotas,{id:Date.now(),nome_rota:novaRotaForm.nome,data:novaRotaForm.data,lista_pedido_ids:[],status_rota:'planejado',entregador:novaRotaForm.entregador}]}));
+    const tempId = Date.now();
+    const novaRota = {nome_rota:novaRotaForm.nome,data:novaRotaForm.data,lista_pedido_ids:[],status_rota:'planejado',entregador:novaRotaForm.entregador};
+    setData(prev=>({...prev,rotas:[...prev.rotas,{id:tempId,...novaRota}]}));
+    sbInsert('rotas', novaRota).then(saved => {
+      setData(p=>({...p,rotas:p.rotas.map(r=>r.id===tempId?{...r,id:saved.id}:r)}));
+    }).catch(console.error);
     setShowNovaRota(false);
     setNovaRotaForm({nome:'',data:'',entregador:'Tiberio'});
   };
   const deleteRota = (rotaId) => {
     if(!confirm('Excluir esta rota?')) return;
     setData(prev=>({...prev,rotas:prev.rotas.filter(r=>r.id!==rotaId)}));
+    sbDelete('rotas', rotaId).catch(console.error);
   };
 
   // Localidades CRUD
   const saveNovaLocalidade = () => {
     if(!novaLocForm.nome_localidade) return;
-    setData(prev=>({...prev,localidades:[...prev.localidades,{id:Date.now(),...novaLocForm,valor_entrega:parseFloat(novaLocForm.valor_entrega)||0}]}));
+    const tempId = Date.now();
+    const novaLoc = {...novaLocForm,valor_entrega:parseFloat(novaLocForm.valor_entrega)||0};
+    setData(prev=>({...prev,localidades:[...prev.localidades,{id:tempId,...novaLoc}]}));
+    sbInsert('localidades', novaLoc).then(saved => {
+      setData(p=>({...p,localidades:p.localidades.map(l=>l.id===tempId?{...l,id:saved.id}:l)}));
+    }).catch(console.error);
     setNovaLocForm({nome_localidade:'',rota_descricao:'',valor_entrega:'',link_rota_maps:''});
   };
   const deleteLocalidade = (locId) => {
     if(!confirm('Excluir localidade?')) return;
     setData(prev=>({...prev,localidades:prev.localidades.filter(l=>l.id!==locId)}));
+    sbDelete('localidades', locId).catch(console.error);
   };
 
   // Add item to edit pedido
@@ -2914,69 +3231,187 @@ const PanelPedidos = ({data, setData, openModal, isMobile}) => {
 };
 
 // ═══════════════════════════════════════════════════
-// PANEL: ASSISTENTE DE GESTÃO (AI)
+// HELPER: Montar contexto para Agente 1 (Edge Function)
 // ═══════════════════════════════════════════════════
-const PanelAssistente = ({data, settings}) => {
-  const [msgs, setMsgs] = useState([
-    {role:'assistant', content:'Olá, Tiba! 👋 Sou o seu assistente de gestão da Taboca. Posso te ajudar com relatórios, análises, cadastros e muito mais. O que você precisa hoje?'}
-  ]);
+const buildAgentContext = (data) => {
+  const now = new Date();
+  const mesAtual = now.toISOString().slice(0,7); // '2026-03'
+  const receitaMes = data.transactions.filter(t=>t.tipo==='receita'&&t.data?.startsWith(mesAtual)).reduce((a,t)=>a+t.valor,0);
+  const despesaMes = data.transactions.filter(t=>t.tipo==='despesa'&&t.data?.startsWith(mesAtual)).reduce((a,t)=>a+t.valor,0);
+  const meta = data.settings?.meta_faturamento || 3000;
+  return {
+    financeiro: { receita: receitaMes, despesa: despesaMes, lucro: receitaMes - despesaMes, meta, percentual_meta: (receitaMes/meta)*100 },
+    estoque: {
+      produtos: data.produtos.map(p=>({nome:p.nome,quantidade:p.quantidade,valor_unitario:p.valor_unitario,categoria:p.categoria})),
+      insumos: data.insumos.map(i=>({nome:i.nome,quantidade:i.quantidade,unidade:i.unidade})),
+      alertas: [...data.produtos,...data.insumos].filter(p=>isLowStock(p)||isExpiringSoon(p)).map(p=>`${p.nome}: ${p.quantidade}${p.unidade||' unid'}${isExpiringSoon(p)?' (vencendo)':''}`)
+    },
+    pedidos: data.pedidos.filter(p=>p.status_entrega!=='entregue').map(p=>({id:p.id,cliente_nome:data.clientes.find(c=>c.id===p.cliente_id)?.nome,valor_total:p.valor_total,data_entrega:p.data_entrega,status_producao:p.status_producao,status_entrega:p.status_entrega})),
+    fornadas: data.fornadas.filter(f=>new Date(f.data)>=new Date(now.toISOString().slice(0,10))).map(f=>({data:f.data,tipo:f.tipo,hora_inicio:f.hora_inicio,hora_fim:f.hora_fim,encerramento_encomenda:f.encerramento_encomenda})),
+    clientes: { total: data.clientes.length, por_grupo: data.grupos.map(g=>({nome:g.nome_grupo,qtd:(g.lista_cliente_ids||[]).length})) },
+    ultimas_atividades: (data.activityLog||[]).slice(0,5).map(a=>({descricao:a.descricao,data:a.data})),
+    transacoes_recentes: data.transactions.slice(0,8).map(t=>({descricao:t.descricao,tipo:t.tipo,valor:t.valor,data:t.data})),
+  };
+};
+
+// ═══════════════════════════════════════════════════
+// HELPER: Chamar Edge Function do Agente
+// ═══════════════════════════════════════════════════
+const callAgentGestao = async (message, context, history=[]) => {
+  const resp = await fetch(`${supabaseUrl}/functions/v1/agent-gestao`, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+    body: JSON.stringify({ message, context, history })
+  });
+  if(!resp.ok) throw new Error(`Erro ${resp.status}`);
+  return resp.json();
+};
+
+const callAgentAtendente = async (cliente_id, mensagem, canal, history=[]) => {
+  const resp = await fetch(`${supabaseUrl}/functions/v1/agent-atendente`, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+    body: JSON.stringify({ cliente_id, mensagem, canal, history })
+  });
+  if(!resp.ok) throw new Error(`Erro ${resp.status}`);
+  return resp.json();
+};
+
+// ═══════════════════════════════════════════════════
+// HELPER: Executar ações do Agente
+// ═══════════════════════════════════════════════════
+const executeAgentAction = async (action, data, setData) => {
+  try {
+    if(action.type === 'insert' && action.table && action.data) {
+      const saved = await sbInsert(action.table, action.data);
+      // Atualizar estado local
+      setData(prev => {
+        const key = action.table === 'activity_log' ? 'activityLog' : action.table;
+        return {...prev, [key]: key === 'activityLog' ? [saved, ...(prev[key]||[])] : [...(prev[key]||[]), saved]};
+      });
+      return { success: true, data: saved };
+    }
+    if(action.type === 'update' && action.table && action.data && action.data.id) {
+      const { id, ...updates } = action.data;
+      const saved = await sbUpdate(action.table, id, updates);
+      setData(prev => {
+        const key = action.table === 'activity_log' ? 'activityLog' : action.table;
+        return {...prev, [key]: (prev[key]||[]).map(item => item.id === id ? {...item, ...updates} : item)};
+      });
+      return { success: true, data: saved };
+    }
+    if(action.type === 'delete' && action.table && action.data?.id) {
+      await sbDelete(action.table, action.data.id);
+      setData(prev => {
+        const key = action.table === 'activity_log' ? 'activityLog' : action.table;
+        return {...prev, [key]: (prev[key]||[]).filter(item => item.id !== action.data.id)};
+      });
+      return { success: true };
+    }
+    return { success: false, error: 'Ação não reconhecida' };
+  } catch(e) {
+    console.error('executeAgentAction error:', e);
+    return { success: false, error: e.message };
+  }
+};
+
+// ═══════════════════════════════════════════════════
+// SUGESTÕES PROATIVAS (para Dashboard)
+// ═══════════════════════════════════════════════════
+const getProactiveSuggestions = (data) => {
+  const suggestions = [];
+  const alertasEstoque = [...data.produtos,...data.insumos].filter(p=>isLowStock(p));
+  if(alertasEstoque.length > 0) {
+    suggestions.push({ icon: '⚠️', text: `${alertasEstoque[0].nome} está abaixo do mínimo (${alertasEstoque[0].quantidade}${alertasEstoque[0].unidade||' unid'})`, prompt: `O ${alertasEstoque[0].nome} está com estoque baixo (${alertasEstoque[0].quantidade}). O que posso fazer?`, color: C.yellow });
+  }
+  const pedidosPendentes = data.pedidos.filter(p=>p.status_producao==='pendente');
+  if(pedidosPendentes.length > 0) {
+    const proxFornada = data.fornadas.find(f=>new Date(f.data)>=new Date());
+    suggestions.push({ icon: '🛒', text: `${pedidosPendentes.length} pedido(s) aguardando produção${proxFornada?' para '+proxFornada.data:''}`, prompt: `Tenho ${pedidosPendentes.length} pedidos pendentes. Me dê um resumo e o que preciso fazer.`, color: C.blue });
+  }
+  const now = new Date();
+  const mesAtual = now.toISOString().slice(0,7);
+  const receitaMes = data.transactions.filter(t=>t.tipo==='receita'&&t.data?.startsWith(mesAtual)).reduce((a,t)=>a+t.valor,0);
+  const meta = data.settings?.meta_faturamento || 3000;
+  const falta = meta - receitaMes;
+  if(falta > 0 && receitaMes > 0) {
+    suggestions.push({ icon: '🎯', text: `Faltam ${fmtCurrency(falta)} para a meta do mês (${((receitaMes/meta)*100).toFixed(0)}%)`, prompt: `Faltam R$${falta.toFixed(2)} para a meta. Me ajude com estratégias para atingir.`, color: C.green });
+  }
+  const vencendo = [...data.produtos,...data.insumos].filter(p=>isExpiringSoon(p));
+  if(vencendo.length > 0) {
+    suggestions.push({ icon: '📅', text: `${vencendo.length} item(ns) com prazo de validade próximo`, prompt: `Quais produtos estão vencendo em breve? Me dê detalhes.`, color: C.red });
+  }
+  return suggestions;
+};
+
+// ═══════════════════════════════════════════════════
+// PANEL: ASSISTENTE DE GESTÃO (AI) — Fase 4
+// ═══════════════════════════════════════════════════
+const PanelAssistente = ({data, setData, settings, isMobile}) => {
+  const [msgs, setMsgs] = useState(()=>{
+    try {
+      const saved = localStorage.getItem('taboca_chat_history');
+      if(saved) { const parsed = JSON.parse(saved); if(parsed.length > 0) return parsed; }
+    } catch(e) {}
+    return [{role:'assistant', content:'Olá, Tiba! 👋 Sou o seu assistente de gestão da Taboca. Posso te ajudar com relatórios, análises, cadastros e muito mais. O que você precisa hoje?'}];
+  });
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pendingActions, setPendingActions] = useState([]);
   const endRef = useRef(null);
 
   useEffect(()=>{ endRef.current?.scrollIntoView({behavior:'smooth'}); }, [msgs]);
+  useEffect(()=>{ try { localStorage.setItem('taboca_chat_history', JSON.stringify(msgs.slice(-50))); } catch(e){} }, [msgs]);
 
-  const getSystemContext = () => {
-    const receitaMes = data.transactions.filter(t=>t.tipo==='receita'&&t.data.startsWith('2026-03')).reduce((a,t)=>a+t.valor,0);
-    const despesaMes = data.transactions.filter(t=>t.tipo==='despesa'&&t.data.startsWith('2026-03')).reduce((a,t)=>a+t.valor,0);
-    return `${settings.prompt_agente1}
-
-DADOS ATUAIS DO SISTEMA (${new Date().toLocaleDateString('pt-BR')}):
-- Receita do mês: R$ ${receitaMes.toFixed(2)}
-- Despesas do mês: R$ ${despesaMes.toFixed(2)}
-- Lucro do mês: R$ ${(receitaMes-despesaMes).toFixed(2)}
-- Meta de faturamento: R$ ${settings.meta_faturamento.toFixed(2)} (${((receitaMes/settings.meta_faturamento)*100).toFixed(1)}% atingido)
-- Total de clientes: ${data.clientes.length}
-- Pedidos em aberto: ${data.pedidos.filter(p=>p.status_entrega!=='entregue').length}
-- Produtos em alerta de estoque: ${[...data.produtos,...data.insumos].filter(p=>isLowStock(p)||isExpiringSoon(p)).length}
-- Produtos em estoque: ${data.produtos.map(p=>p.nome+': '+p.quantidade+' unid').join(', ')}
-- Últimas transações: ${data.transactions.slice(0,5).map(t=>`${t.descricao} (${t.tipo}: R$${t.valor})`).join('; ')}`;
-  };
-
-  const sendMsg = async () => {
-    if(!input.trim()||loading) return;
-    const userMsg = input.trim();
+  const sendMsg = async (msgText) => {
+    const text = msgText || input.trim();
+    if(!text||loading) return;
     setInput('');
-    const newMsgs = [...msgs, {role:'user', content:userMsg}];
+    const newMsgs = [...msgs, {role:'user', content:text}];
     setMsgs(newMsgs);
     setLoading(true);
+    setPendingActions([]);
     try {
-      const resp = await fetch('https://api.anthropic.com/v1/messages', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({
-          model:'claude-sonnet-4-20250514',
-          max_tokens:1000,
-          system: getSystemContext(),
-          messages: newMsgs.map(m=>({role:m.role,content:m.content}))
-        })
-      });
-      const d = await resp.json();
-      const reply = d.content?.[0]?.text || 'Desculpe, não consegui processar sua solicitação.';
+      const context = buildAgentContext(data);
+      const history = newMsgs.slice(-10).filter(m=>m.role!=='system');
+      const result = await callAgentGestao(text, context, history.slice(0,-1));
+      const reply = result.reply || 'Desculpe, não consegui processar.';
       setMsgs(p=>[...p, {role:'assistant', content:reply}]);
+      if(result.actions && result.actions.length > 0) {
+        setPendingActions(result.actions);
+      }
     } catch(e) {
-      setMsgs(p=>[...p, {role:'assistant', content:'Erro ao conectar com o assistente. Verifique a conexão.'}]);
+      console.error('Agent error:', e);
+      setMsgs(p=>[...p, {role:'assistant', content:'❌ Erro ao conectar com o assistente. Verifique se a Edge Function está deployada e a API Key configurada.\n\nDica: Execute `supabase secrets set ANTHROPIC_API_KEY=sk-ant-...` no seu projeto Supabase.'}]);
     }
     setLoading(false);
   };
 
-  const quickActions = ['Resumo do mês','Pedidos em aberto','Alertas de estoque','Análise de vendas','Próximas fornadas'];
+  const handleExecuteAction = async (action, idx) => {
+    const result = await executeAgentAction(action, data, setData);
+    if(result.success) {
+      setMsgs(p=>[...p, {role:'assistant', content:`✅ Ação executada: ${action.description || action.type}`}]);
+      logActivity(setData, action.table || 'sistema', `Ação IA: ${action.description || action.type}`, 'Agente IA');
+    } else {
+      setMsgs(p=>[...p, {role:'assistant', content:`❌ Erro ao executar: ${result.error}`}]);
+    }
+    setPendingActions(p=>p.filter((_,i)=>i!==idx));
+  };
+
+  const clearChat = () => {
+    setMsgs([{role:'assistant', content:'Nova conversa iniciada. Como posso ajudar? 😊'}]);
+    setPendingActions([]);
+    localStorage.removeItem('taboca_chat_history');
+  };
+
+  const quickActions = ['Resumo do mês','Pedidos em aberto','Alertas de estoque','Análise de vendas','Próximas fornadas','Ticket médio','Melhores clientes'];
 
   return (
     <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
-      <div style={{flex:1,overflowY:'auto',padding:'20px 28px',display:'flex',flexDirection:'column',gap:12}}>
-        <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:4}}>
-          {quickActions.map(a=><button key={a} onClick={()=>setInput(a)} style={{border:`1px solid ${C.border}`,background:'#fff',borderRadius:20,padding:'5px 14px',cursor:'pointer',fontSize:11,fontWeight:600,color:C.navy,transition:'border 0.1s'}}>{a}</button>)}
+      <div style={{flex:1,overflowY:'auto',padding:isMobile?'12px 16px':'20px 28px',display:'flex',flexDirection:'column',gap:12}}>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:4,alignItems:'center'}}>
+          {quickActions.map(a=><button key={a} onClick={()=>sendMsg(a)} style={{border:`1px solid ${C.border}`,background:'#fff',borderRadius:20,padding:'5px 14px',cursor:'pointer',fontSize:11,fontWeight:600,color:C.navy,transition:'all 0.15s'}}>{a}</button>)}
+          <button onClick={clearChat} style={{border:`1px solid ${C.border}`,background:'#fff',borderRadius:20,padding:'5px 10px',cursor:'pointer',fontSize:10,fontWeight:600,color:C.navyLight,marginLeft:'auto'}} title="Nova conversa"><RefreshCw size={12}/></button>
         </div>
         {msgs.map((m,i)=>(
           <div key={i} style={{display:'flex',alignItems:'flex-start',gap:10,justifyContent:m.role==='user'?'flex-end':'flex-start'}}>
@@ -2987,6 +3422,22 @@ DADOS ATUAIS DO SISTEMA (${new Date().toLocaleDateString('pt-BR')}):
             {m.role==='user'&&<div style={{width:32,height:32,borderRadius:16,background:'#FEF3EA',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:16}}>👨‍🍳</div>}
           </div>
         ))}
+        {/* Ações pendentes de confirmação */}
+        {pendingActions.length > 0 && (
+          <div style={{background:'#FFF8F0',border:`1.5px solid ${C.amber}`,borderRadius:12,padding:16,marginTop:4}}>
+            <div style={{fontSize:12,fontWeight:700,color:C.primary,marginBottom:10,display:'flex',alignItems:'center',gap:6}}><AlertCircle size={14}/>Ações sugeridas — confirme para executar:</div>
+            {pendingActions.map((action,idx)=>(
+              <div key={idx} style={{display:'flex',alignItems:'center',gap:10,marginBottom:8,background:'#fff',borderRadius:8,padding:'10px 14px',border:`1px solid ${C.border}`}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:600,color:C.navy}}>{action.description || `${action.type} em ${action.table}`}</div>
+                  <div style={{fontSize:10,color:C.navyLight,marginTop:2}}>{action.type.toUpperCase()} → {action.table}</div>
+                </div>
+                <button onClick={()=>handleExecuteAction(action,idx)} style={{...s.btnSm,background:C.green,fontSize:11}}><Check size={12}/>Executar</button>
+                <button onClick={()=>setPendingActions(p=>p.filter((_,i)=>i!==idx))} style={{...s.btnSm,background:C.red,fontSize:11}}><X size={12}/>Ignorar</button>
+              </div>
+            ))}
+          </div>
+        )}
         {loading&&<div style={{display:'flex',gap:10,alignItems:'center'}}>
           <div style={{width:32,height:32,borderRadius:16,background:C.primary,display:'flex',alignItems:'center',justifyContent:'center'}}><Bot size={15} color='#fff'/></div>
           <div style={{background:'#fff',borderRadius:'4px 16px 16px 16px',padding:'12px 16px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)'}}>
@@ -2997,9 +3448,71 @@ DADOS ATUAIS DO SISTEMA (${new Date().toLocaleDateString('pt-BR')}):
         </div>}
         <div ref={endRef}/>
       </div>
-      <div style={{background:'#fff',borderTop:`1px solid ${C.border}`,padding:'14px 28px',display:'flex',gap:10,alignItems:'flex-end'}}>
+      <div style={{background:'#fff',borderTop:`1px solid ${C.border}`,padding:isMobile?'10px 16px':'14px 28px',display:'flex',gap:10,alignItems:'flex-end'}}>
         <textarea value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg();}}} placeholder="Pergunte sobre o negócio, peça relatórios, cadastre dados..." style={{...s.input,flex:1,resize:'none',minHeight:44,maxHeight:120}} rows={2}/>
-        <Btn onClick={sendMsg} disabled={loading||!input.trim()} style={{height:44,paddingInline:16}}><Send size={15}/></Btn>
+        <Btn onClick={()=>sendMsg()} disabled={loading||!input.trim()} style={{height:44,paddingInline:16}}><Send size={15}/></Btn>
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════
+// FLOATING CHAT WIDGET (Agente 1 — acessível em qualquer painel)
+// ═══════════════════════════════════════════════════
+const FloatingChat = ({data, setData, settings, onExpand, isMobile}) => {
+  const [open, setOpen] = useState(false);
+  const [msgs, setMsgs] = useState([{role:'assistant', content:'Oi Tiba! Precisa de algo rápido? 😊'}]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const endRef = useRef(null);
+
+  useEffect(()=>{ if(open) endRef.current?.scrollIntoView({behavior:'smooth'}); }, [msgs, open]);
+
+  const sendMsg = async () => {
+    if(!input.trim()||loading) return;
+    const text = input.trim();
+    setInput('');
+    const newMsgs = [...msgs, {role:'user', content:text}];
+    setMsgs(newMsgs);
+    setLoading(true);
+    try {
+      const context = buildAgentContext(data);
+      const result = await callAgentGestao(text, context, newMsgs.slice(-8,-1));
+      setMsgs(p=>[...p, {role:'assistant', content:result.reply || 'Erro.'}]);
+    } catch(e) {
+      setMsgs(p=>[...p, {role:'assistant', content:'Erro ao conectar. Tente o painel completo.'}]);
+    }
+    setLoading(false);
+  };
+
+  if(!open) return (
+    <div onClick={()=>setOpen(true)} style={{position:'fixed',bottom:isMobile?80:24,right:24,width:56,height:56,borderRadius:28,background:`linear-gradient(135deg, ${C.primary}, ${C.primaryLight})`,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',boxShadow:'0 6px 20px rgba(123,58,16,0.3)',zIndex:300,transition:'transform 0.2s'}}>
+      <Bot size={24} color='#fff'/>
+    </div>
+  );
+
+  return (
+    <div style={{position:'fixed',bottom:isMobile?80:24,right:24,width:isMobile?'calc(100vw - 32px)':380,height:isMobile?'60vh':480,background:'#fff',borderRadius:16,boxShadow:'0 12px 40px rgba(0,0,0,0.15)',zIndex:300,display:'flex',flexDirection:'column',overflow:'hidden',border:`1px solid ${C.border}`}}>
+      <div style={{background:C.primary,padding:'12px 16px',display:'flex',alignItems:'center',gap:10}}>
+        <Bot size={18} color='#fff'/>
+        <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:'#fff'}}>Taboca Bot</div><div style={{fontSize:10,color:'rgba(255,255,255,0.7)'}}>Assistente de Gestão</div></div>
+        <button onClick={()=>{onExpand();setOpen(false);}} style={{border:'none',background:'rgba(255,255,255,0.2)',borderRadius:6,padding:4,cursor:'pointer'}} title="Expandir"><ArrowUpRight size={14} color='#fff'/></button>
+        <button onClick={()=>setOpen(false)} style={{border:'none',background:'rgba(255,255,255,0.2)',borderRadius:6,padding:4,cursor:'pointer'}}><X size={14} color='#fff'/></button>
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:12,display:'flex',flexDirection:'column',gap:8}}>
+        {msgs.map((m,i)=>(
+          <div key={i} style={{display:'flex',justifyContent:m.role==='user'?'flex-end':'flex-start'}}>
+            <div style={{maxWidth:'85%',background:m.role==='user'?C.primary:'#F4F0EB',color:m.role==='user'?'#fff':C.navy,borderRadius:12,padding:'8px 12px',fontSize:13,lineHeight:1.5,whiteSpace:'pre-wrap'}}>
+              {m.content}
+            </div>
+          </div>
+        ))}
+        {loading&&<div style={{display:'flex',gap:4,padding:8}}>{[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:3,background:C.navyLight,animation:'pulse 1.4s ease-in-out infinite',animationDelay:`${i*0.2}s`}}/>)}</div>}
+        <div ref={endRef}/>
+      </div>
+      <div style={{borderTop:`1px solid ${C.border}`,padding:10,display:'flex',gap:8}}>
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();sendMsg();}}} placeholder="Pergunte algo..." style={{...s.input,flex:1,fontSize:13,padding:'8px 12px'}}/>
+        <button onClick={sendMsg} disabled={loading||!input.trim()} style={{...s.btnSm,height:36,paddingInline:12}}><Send size={13}/></button>
       </div>
     </div>
   );
@@ -3036,6 +3549,16 @@ const ModalNovaTransacao = ({open, onClose, data, setData}) => {
       // Activity log
       const insInfo = t.insumo_reposto ? ` → Estoque: +${t.insumo_reposto.quantidade}${t.insumo_reposto.unidade} ${t.insumo_reposto.nome}` : '';
       newData.activityLog = [{id:Date.now(),tipo:'transacao',descricao:`${form.descricao} — ${form.tipo==='receita'?'+':'-'}R$${parseFloat(form.valor).toFixed(2)}${insInfo}`,data:form.data,operador:prev.settings?.responsavel||'Tiberio',icon:form.tipo},...(prev.activityLog||[])];
+      // Persist to Supabase
+      const txnClean = {descricao:t.descricao,data:t.data,conta:t.conta,categoria:t.categoria,tipo:t.tipo,valor:t.valor,insumo_reposto:t.insumo_reposto||null};
+      sbInsert('transactions', txnClean).catch(console.error);
+      if(isInsumo && form.insumo_id && form.insumo_qtd) {
+        const insId = parseInt(form.insumo_id);
+        const insQtd = parseFloat(form.insumo_qtd);
+        const ins = prev.insumos.find(i=>i.id===insId);
+        if(ins && insQtd > 0) sbUpdate('insumos', insId, {quantidade: ins.quantidade + insQtd}).catch(console.error);
+      }
+      sbInsert('activity_log', {tipo:'transacao',descricao:`${form.descricao} — ${form.tipo==='receita'?'+':'-'}R$${parseFloat(form.valor).toFixed(2)}${insInfo}`,data:form.data,operador:prev.settings?.responsavel||'Tiberio',icon:form.tipo}).catch(console.error);
       return newData;
     });
     setForm({descricao:'',data:NOW.toISOString().slice(0,16),conta:'PIX',categoria:'',tipo:'receita',valor:'',insumo_id:'',insumo_qtd:''});
@@ -3094,8 +3617,17 @@ const ModalNovoCliente = ({open, onClose, data, setData}) => {
   const set = k => e => { const nf={...form,[k]:e.target.value}; setForm(nf); setFilled([nf.nome,nf.whatsapp||nf.instagram,nf.endereco_completo,nf.preferencias].filter(Boolean).length); };
   const save = () => {
     if(!form.nome) return;
-    const cli={...form,id:Date.now(),data_cadastro:NOW.toISOString().slice(0,10),localidade_id:parseInt(form.localidade_id),grupo_id:parseInt(form.grupo_id)};
-    setData(prev=>({...prev,clientes:[...prev.clientes,cli],grupos:prev.grupos.map(g=>g.id===cli.grupo_id?{...g,lista_cliente_ids:[...g.lista_cliente_ids,cli.id]}:g),activityLog:[{id:Date.now()+1,tipo:'cliente',descricao:`Novo cliente cadastrado: ${form.nome}`,data:new Date().toISOString(),operador:'Tiberio',icon:'cliente'},...prev.activityLog]}));
+    const tempId = Date.now();
+    const cli={...form,id:tempId,data_cadastro:NOW.toISOString().slice(0,10),localidade_id:parseInt(form.localidade_id),grupo_id:parseInt(form.grupo_id)};
+    setData(prev=>({...prev,clientes:[...prev.clientes,cli],grupos:prev.grupos.map(g=>g.id===cli.grupo_id?{...g,lista_cliente_ids:[...g.lista_cliente_ids,tempId]}:g),activityLog:[{id:Date.now()+1,tipo:'cliente',descricao:`Novo cliente cadastrado: ${form.nome}`,data:new Date().toISOString(),operador:'Tiberio',icon:'cliente'},...prev.activityLog]}));
+    // Persist to Supabase
+    const cliClean = {...cli, id:undefined};
+    sbInsert('clientes', cliClean).then(saved => {
+      setData(p=>({...p,clientes:p.clientes.map(c=>c.id===tempId?{...c,id:saved.id}:c),grupos:p.grupos.map(g=>({...g,lista_cliente_ids:g.lista_cliente_ids.map(id=>id===tempId?saved.id:id)}))}));
+      const grupo = data.grupos.find(g=>g.id===cli.grupo_id);
+      if(grupo) sbUpdate('grupos', grupo.id, {lista_cliente_ids:[...grupo.lista_cliente_ids, saved.id]}).catch(console.error);
+    }).catch(console.error);
+    sbInsert('activity_log', {tipo:'cliente',descricao:`Novo cliente cadastrado: ${form.nome}`,data:new Date().toISOString(),operador:'Tiberio',icon:'cliente'}).catch(console.error);
     onClose();
   };
   return (
@@ -3159,6 +3691,18 @@ const ModalNovoPedido = ({open, onClose, data, setData}) => {
       } else {
         logs.push({id:pedId+1,tipo:'producao',descricao:`Pedido #${pedId} — ${cliNome} — aguardando produção`,data:new Date().toISOString(),operador:'TABOCA',icon:'producao'});
       }
+      // Persist to Supabase
+      const pedClean = {...ped, id:undefined};
+      sbInsert('pedidos', pedClean).then(saved => {
+        setData(p=>({...p,pedidos:p.pedidos.map(pe=>pe.id===pedId?{...pe,id:saved.id}:pe)}));
+      }).catch(console.error);
+      if(temEstoque) {
+        form.itens.forEach(it => {
+          const p = prev.produtos.find(pr=>pr.id===it.produto_id);
+          if(p) sbUpdate('produtos', p.id, {quantidade: p.quantidade - it.quantidade}).catch(console.error);
+        });
+      }
+      logs.forEach(l => sbInsert('activity_log', {tipo:l.tipo,descricao:l.descricao,data:l.data,operador:l.operador,icon:l.icon}).catch(console.error));
       return {...prev,pedidos:[...prev.pedidos,ped],produtos:novosProdutos,activityLog:[...logs,...prev.activityLog]};
     });
     onClose();
@@ -3193,6 +3737,203 @@ const ModalNovoPedido = ({open, onClose, data, setData}) => {
 };
 
 // ═══════════════════════════════════════════════════
+// PANEL: CAMPANHAS DE VENDA (Tarefa 6)
+// ═══════════════════════════════════════════════════
+const PanelCampanhas = ({data, setData}) => {
+  const [showNew, setShowNew] = useState(false);
+  const [campForm, setCampForm] = useState({nome:'', grupo_ids:[], mensagem:'', canal:'whatsapp'});
+  const [aiLoading, setAiLoading] = useState(false);
+
+  const gerarMensagemIA = async () => {
+    setAiLoading(true);
+    try {
+      const grupos = campForm.grupo_ids.map(id=>data.grupos.find(g=>g.id===id)?.nome_grupo).filter(Boolean).join(', ');
+      const result = await callAgentGestao(
+        `Crie uma mensagem de campanha de vendas para os grupos: ${grupos || 'todos'}. Produtos disponíveis: ${data.produtos.filter(p=>p.quantidade>0).map(p=>`${p.nome} (R$${p.valor_unitario})`).join(', ')}. Próximas fornadas: ${data.fornadas.map(f=>`${f.data} (${f.tipo})`).join(', ')}. A mensagem deve ser curta, persuasiva, com emojis, estilo WhatsApp.`,
+        buildAgentContext(data)
+      );
+      setCampForm(f=>({...f, mensagem: result.reply || ''}));
+    } catch(e) { console.error(e); }
+    setAiLoading(false);
+  };
+
+  const salvarCampanha = async () => {
+    if(!campForm.nome || !campForm.mensagem) return;
+    const totalClientes = campForm.grupo_ids.reduce((acc,gid) => acc + (data.grupos.find(g=>g.id===gid)?.lista_cliente_ids?.length || 0), 0);
+    const camp = { ...campForm, status: 'rascunho', total_clientes: totalClientes, total_enviados: 0, created_at: new Date().toISOString() };
+    const tempId = Date.now();
+    setData(prev=>({...prev, campanhas: [...(prev.campanhas||[]), {...camp, id:tempId}]}));
+    try {
+      const saved = await sbInsert('campanhas', camp);
+      setData(prev=>({...prev, campanhas: (prev.campanhas||[]).map(c=>c.id===tempId?saved:c)}));
+    } catch(e) { console.error(e); }
+    setCampForm({nome:'', grupo_ids:[], mensagem:'', canal:'whatsapp'});
+    setShowNew(false);
+    logActivity(setData, 'campanha', `Campanha criada: ${camp.nome}`, 'Tiberio');
+  };
+
+  const enviarCampanha = async (campanha) => {
+    // Marcar como enviada e atualizar
+    const clientes = campanha.grupo_ids.flatMap(gid => {
+      const g = data.grupos.find(g=>g.id===gid);
+      return (g?.lista_cliente_ids||[]).map(cid=>data.clientes.find(c=>c.id===cid)).filter(Boolean);
+    });
+    // Criar mensagens para cada cliente
+    const now = new Date().toISOString();
+    for(const cli of clientes) {
+      const msg = { cliente_id: cli.id, canal: campanha.canal, data_hora: now, conteudo: campanha.mensagem, status: 'enviada', de_cliente: false, origem: 'campanha' };
+      setData(prev=>({...prev, mensagens:[...prev.mensagens, {...msg, id:Date.now()+Math.random()}]}));
+      sbInsert('mensagens', msg).catch(console.error);
+    }
+    // Atualizar campanha
+    const updates = { status:'enviada', data_envio: now, total_enviados: clientes.length };
+    setData(prev=>({...prev, campanhas:(prev.campanhas||[]).map(c=>c.id===campanha.id?{...c,...updates}:c)}));
+    sbUpdate('campanhas', campanha.id, updates).catch(console.error);
+    logActivity(setData, 'campanha', `Campanha "${campanha.nome}" enviada para ${clientes.length} clientes`, 'Tiberio');
+  };
+
+  return (
+    <div style={{padding:20}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+        <div style={s.sectionTitle}>Campanhas de Venda</div>
+        <Btn onClick={()=>setShowNew(!showNew)}><Plus size={14}/>{showNew?'Cancelar':'Nova Campanha'}</Btn>
+      </div>
+
+      {showNew && (
+        <div style={{...s.card,marginBottom:16}}>
+          <FormField label="Nome da campanha" required><Input value={campForm.nome} onChange={e=>setCampForm(f=>({...f,nome:e.target.value}))} placeholder="Ex: Promoção de Páscoa"/></FormField>
+          <FormField label="Grupos alvo">
+            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+              {data.grupos.map(g=>(
+                <label key={g.id} style={{display:'flex',alignItems:'center',gap:4,fontSize:12,fontWeight:600,cursor:'pointer',padding:'4px 10px',borderRadius:6,border:`1px solid ${campForm.grupo_ids.includes(g.id)?C.primary:C.border}`,background:campForm.grupo_ids.includes(g.id)?'#FEF3EA':'#fff'}}>
+                  <input type="checkbox" checked={campForm.grupo_ids.includes(g.id)} onChange={e=>{setCampForm(f=>({...f,grupo_ids:e.target.checked?[...f.grupo_ids,g.id]:f.grupo_ids.filter(id=>id!==g.id)}));}} style={{accentColor:C.primary}}/>
+                  {g.nome_grupo} ({(g.lista_cliente_ids||[]).length})
+                </label>
+              ))}
+            </div>
+          </FormField>
+          <FormField label="Canal"><Select value={campForm.canal} onChange={e=>setCampForm(f=>({...f,canal:e.target.value}))}><option value="whatsapp">WhatsApp</option><option value="instagram">Instagram</option><option value="ambos">Ambos</option></Select></FormField>
+          <FormField label="Mensagem da campanha">
+            <div style={{display:'flex',gap:8,marginBottom:8}}>
+              <button onClick={gerarMensagemIA} disabled={aiLoading} style={{...s.btnSm,background:C.amber}}>{aiLoading?<Loader size={12}/>:<Bot size={12}/>} Gerar com IA</button>
+            </div>
+            <Textarea value={campForm.mensagem} onChange={e=>setCampForm(f=>({...f,mensagem:e.target.value}))} placeholder="Escreva a mensagem ou gere com IA..." rows={5}/>
+          </FormField>
+          <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
+            <Btn variant='outline' onClick={()=>setShowNew(false)}>Cancelar</Btn>
+            <Btn onClick={salvarCampanha} disabled={!campForm.nome||!campForm.mensagem}><Check size={14}/>Salvar Rascunho</Btn>
+          </div>
+        </div>
+      )}
+
+      {/* Lista de campanhas */}
+      {(data.campanhas||[]).length === 0 && !showNew && (
+        <div style={{textAlign:'center',padding:40,color:C.navyLight}}>
+          <Send size={32} color={C.border}/>
+          <div style={{fontSize:13,fontWeight:600,marginTop:12}}>Nenhuma campanha criada ainda</div>
+          <div style={{fontSize:11,marginTop:4}}>Crie campanhas de venda para alcançar seus clientes</div>
+        </div>
+      )}
+      {(data.campanhas||[]).map(camp=>(
+        <div key={camp.id} style={{...s.card,marginBottom:12,display:'flex',alignItems:'center',gap:16}}>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,color:C.navy,fontSize:14}}>{camp.nome}</div>
+            <div style={{fontSize:11,color:C.navyLight,marginTop:2}}>Canal: {camp.canal} — {camp.total_clientes||0} clientes — Criada: {fmtDate(camp.created_at)}</div>
+            <div style={{fontSize:12,color:C.navy,marginTop:6,background:'#F9F6F4',borderRadius:6,padding:'8px 10px',lineHeight:1.4,maxHeight:60,overflow:'hidden'}}>{camp.mensagem}</div>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:6,alignItems:'flex-end'}}>
+            <Badge color={camp.status==='enviada'?'green':camp.status==='agendada'?'yellow':'gray'}>{camp.status}</Badge>
+            {camp.status==='rascunho'&&<Btn onClick={()=>{if(confirm(`Enviar campanha "${camp.nome}" para ${camp.total_clientes||0} clientes?`))enviarCampanha(camp);}} style={{fontSize:11}}><Send size={12}/>Enviar</Btn>}
+            {camp.status==='enviada'&&<div style={{fontSize:10,color:C.green,fontWeight:600}}>{camp.total_enviados} enviados</div>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════
+// PANEL: CONFIGURAÇÃO DE CANAIS (WhatsApp / Instagram)
+// ═══════════════════════════════════════════════════
+const PanelCanaisConfig = ({data, setData}) => {
+  const [waForm, setWaForm] = useState(data.whatsapp_config||{});
+  const [igForm, setIgForm] = useState(data.instagram_config||{});
+  const [saved, setSaved] = useState('');
+
+  const saveWA = async () => {
+    try {
+      const { data: result } = await supabase.from('whatsapp_config').upsert({id:1,...waForm}).select().single();
+      setData(prev=>({...prev, whatsapp_config: result||waForm}));
+      setSaved('whatsapp'); setTimeout(()=>setSaved(''),2000);
+    } catch(e) { console.error(e); }
+  };
+
+  const saveIG = async () => {
+    try {
+      const { data: result } = await supabase.from('instagram_config').upsert({id:1,...igForm}).select().single();
+      setData(prev=>({...prev, instagram_config: result||igForm}));
+      setSaved('instagram'); setTimeout(()=>setSaved(''),2000);
+    } catch(e) { console.error(e); }
+  };
+
+  return (
+    <div style={{padding:20}}>
+      <div style={s.sectionTitle}>Integração de Canais</div>
+
+      {/* WhatsApp */}
+      <div style={{...s.card, marginBottom:16}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}>
+          <span style={{fontSize:20}}>💬</span>
+          <div style={{flex:1}}><div style={{fontWeight:700,color:C.navy}}>WhatsApp Business API</div><div style={{fontSize:11,color:C.navyLight}}>Configuração da API oficial Meta</div></div>
+          {saved==='whatsapp'&&<Badge color='green'>Salvo!</Badge>}
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <FormField label="Phone Number ID"><Input value={waForm.phone_number_id||''} onChange={e=>setWaForm(f=>({...f,phone_number_id:e.target.value}))} placeholder="Ex: 123456789012345"/></FormField>
+          <FormField label="Número de Telefone"><Input value={waForm.phone_number||''} onChange={e=>setWaForm(f=>({...f,phone_number:e.target.value}))} placeholder="5573999990000"/></FormField>
+          <FormField label="Access Token"><Input value={waForm.api_token||''} onChange={e=>setWaForm(f=>({...f,api_token:e.target.value}))} placeholder="EAAx..."/></FormField>
+          <FormField label="Webhook Verify Token"><Input value={waForm.webhook_secret||''} onChange={e=>setWaForm(f=>({...f,webhook_secret:e.target.value}))} placeholder="Token de verificação"/></FormField>
+        </div>
+        <div style={{marginTop:10,padding:'8px 12px',background:'#F9F6F4',borderRadius:8,fontSize:11,color:C.navyLight}}>
+          <strong>URL do Webhook:</strong> {supabaseUrl}/functions/v1/whatsapp-webhook
+        </div>
+        <div style={{display:'flex',gap:10,marginTop:12,alignItems:'center'}}>
+          <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,fontWeight:600,cursor:'pointer'}}>
+            <input type="checkbox" checked={waForm.auto_reply||false} onChange={e=>setWaForm(f=>({...f,auto_reply:e.target.checked}))} style={{accentColor:C.green}}/>
+            Atendimento automático ativo
+          </label>
+          <div style={{marginLeft:'auto'}}><Btn onClick={saveWA}><Check size={13}/>Salvar WhatsApp</Btn></div>
+        </div>
+      </div>
+
+      {/* Instagram */}
+      <div style={{...s.card}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}>
+          <span style={{fontSize:20}}>📷</span>
+          <div style={{flex:1}}><div style={{fontWeight:700,color:C.navy}}>Instagram Graph API</div><div style={{fontSize:11,color:C.navyLight}}>Configuração de DMs do Instagram</div></div>
+          {saved==='instagram'&&<Badge color='green'>Salvo!</Badge>}
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <FormField label="Page ID"><Input value={igForm.page_id||''} onChange={e=>setIgForm(f=>({...f,page_id:e.target.value}))} placeholder="ID da página Facebook"/></FormField>
+          <FormField label="IG User ID"><Input value={igForm.ig_user_id||''} onChange={e=>setIgForm(f=>({...f,ig_user_id:e.target.value}))} placeholder="ID do usuário Instagram"/></FormField>
+          <FormField label="Access Token"><Input value={igForm.access_token||''} onChange={e=>setIgForm(f=>({...f,access_token:e.target.value}))} placeholder="Token de acesso"/></FormField>
+          <FormField label="Webhook Verify Token"><Input value={igForm.webhook_verify_token||''} onChange={e=>setIgForm(f=>({...f,webhook_verify_token:e.target.value}))} placeholder="Token de verificação"/></FormField>
+        </div>
+        <div style={{marginTop:10,padding:'8px 12px',background:'#F9F6F4',borderRadius:8,fontSize:11,color:C.navyLight}}>
+          <strong>URL do Webhook:</strong> {supabaseUrl}/functions/v1/instagram-webhook
+        </div>
+        <div style={{display:'flex',gap:10,marginTop:12,alignItems:'center'}}>
+          <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,fontWeight:600,cursor:'pointer'}}>
+            <input type="checkbox" checked={igForm.auto_reply||false} onChange={e=>setIgForm(f=>({...f,auto_reply:e.target.checked}))} style={{accentColor:C.green}}/>
+            Atendimento automático ativo
+          </label>
+          <div style={{marginLeft:'auto'}}><Btn onClick={saveIG}><Check size={13}/>Salvar Instagram</Btn></div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════
 // MODAL: DEFINIR META
 // ═══════════════════════════════════════════════════
 const ModalDefinirMeta = ({open, onClose, data, setData}) => {
@@ -3202,7 +3943,13 @@ const ModalDefinirMeta = ({open, onClose, data, setData}) => {
       <FormField label="Meta mensal (R$)"><Input type="number" value={meta} onChange={e=>setMeta(e.target.value)} placeholder="3000"/></FormField>
       <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
         <Btn variant='outline' onClick={onClose}>Cancelar</Btn>
-        <Btn onClick={()=>{setData(p=>({...p,settings:{...p.settings,meta_faturamento:parseFloat(meta)}}));onClose();}}><Check size={14}/>Salvar</Btn>
+        <Btn onClick={async ()=>{
+          try {
+            sbUpsertSettings({meta_faturamento:parseFloat(meta)}).catch(console.error);
+            setData(p=>({...p,settings:{...p.settings,meta_faturamento:parseFloat(meta)}}));
+            onClose();
+          } catch(e) { console.error(e); }
+        }}><Check size={14}/>Salvar</Btn>
       </div>
     </Modal>
   );
@@ -3212,11 +3959,10 @@ const ModalDefinirMeta = ({open, onClose, data, setData}) => {
 // ═══════════════════════════════════════════════════
 // LOGIN SCREEN
 // ═══════════════════════════════════════════════════
-const CREDENTIALS = { usuario: 'Tiberio', senha: btoa('210261') };
 
 const LoginScreen = ({ onLogin }) => {
-  const [usuario, setUsuario] = useState('');
-  const [senha, setSenha] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [erro, setErro] = useState('');
   const [loading, setLoading] = useState(false);
   const [mostrarSenha, setMostrarSenha] = useState(false);
@@ -3236,20 +3982,19 @@ const LoginScreen = ({ onLogin }) => {
     }
   }, [bloqueado, countdown]);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (bloqueado) return;
-    if (!usuario.trim() || !senha.trim()) {
-      setErro('Preencha usuário e senha.');
+    if (!email.trim() || !password.trim()) {
+      setErro('Preencha email e senha.');
       return;
     }
     setLoading(true);
-    setTimeout(() => {
-      const senhaCorreta = btoa(senha) === CREDENTIALS.senha;
-      const usuarioCorreto = usuario.trim().toLowerCase() === CREDENTIALS.usuario.toLowerCase();
-      if (usuarioCorreto && senhaCorreta) {
-        setErro('');
-        onLogin();
-      } else {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password.trim(),
+      });
+      if (error) {
         const novasTentativas = tentativas + 1;
         setTentativas(novasTentativas);
         if (novasTentativas >= 3) {
@@ -3257,11 +4002,18 @@ const LoginScreen = ({ onLogin }) => {
           setCountdown(30);
           setErro('Muitas tentativas incorretas. Aguarde 30 segundos.');
         } else {
-          setErro(`Usuário ou senha incorretos. Tentativa ${novasTentativas}/3.`);
+          setErro(`Email ou senha incorretos. Tentativa ${novasTentativas}/3.`);
         }
+      } else {
+        setErro('');
+        onLogin();
       }
+    } catch (e) {
+      setErro('Erro ao conectar. Tente novamente.');
+      console.error(e);
+    } finally {
       setLoading(false);
-    }, 700);
+    }
   };
 
   return (
@@ -3270,7 +4022,6 @@ const LoginScreen = ({ onLogin }) => {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontFamily: "'Montserrat', sans-serif", position: 'relative', overflow: 'hidden',
     }}>
-      {/* Decorative background circles */}
       <div style={{position:'absolute',width:400,height:400,borderRadius:'50%',background:`${C.primary}08`,top:-100,right:-100,pointerEvents:'none'}}/>
       <div style={{position:'absolute',width:300,height:300,borderRadius:'50%',background:`${C.amber}10`,bottom:-80,left:-80,pointerEvents:'none'}}/>
       <div style={{position:'absolute',width:200,height:200,borderRadius:'50%',background:`${C.primary}06`,top:'40%',left:'10%',pointerEvents:'none'}}/>
@@ -3281,7 +4032,6 @@ const LoginScreen = ({ onLogin }) => {
         boxShadow: '0 20px 60px rgba(123,58,16,0.12), 0 4px 16px rgba(0,0,0,0.06)',
         overflow: 'hidden',
       }}>
-        {/* Header com logo */}
         <div style={{
           background: `linear-gradient(135deg, ${C.primary} 0%, ${C.primaryLight} 100%)`,
           padding: '36px 32px 28px', textAlign: 'center',
@@ -3298,23 +4048,22 @@ const LoginScreen = ({ onLogin }) => {
           <div style={{fontSize:12,color:'rgba(255,255,255,0.75)',marginTop:4,fontWeight:500}}>Sistema de Gestão Empresarial</div>
         </div>
 
-        {/* Form */}
         <div style={{padding: '32px'}}>
           <div style={{fontSize:15,fontWeight:700,color:C.navy,marginBottom:6}}>Bem-vindo, Tiba! 👋</div>
           <div style={{fontSize:12,color:C.navyLight,marginBottom:24}}>Faça login para acessar o painel.</div>
 
-          {/* Usuário */}
           <div style={{marginBottom:16}}>
-            <label style={{...s.label}}>Usuário</label>
+            <label style={{...s.label}}>Email</label>
             <div style={{position:'relative'}}>
               <div style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)'}}>
                 <Users size={16} color={C.navyLight}/>
               </div>
               <input
-                value={usuario}
-                onChange={e=>{setUsuario(e.target.value);setErro('');}}
+                type="email"
+                value={email}
+                onChange={e=>{setEmail(e.target.value);setErro('');}}
                 onKeyDown={e=>e.key==='Enter'&&handleLogin()}
-                placeholder="Digite seu usuário"
+                placeholder="seu@email.com"
                 disabled={bloqueado}
                 style={{
                   ...s.input, paddingLeft: 40,
@@ -3325,7 +4074,6 @@ const LoginScreen = ({ onLogin }) => {
             </div>
           </div>
 
-          {/* Senha */}
           <div style={{marginBottom:24}}>
             <label style={{...s.label}}>Senha</label>
             <div style={{position:'relative'}}>
@@ -3334,8 +4082,8 @@ const LoginScreen = ({ onLogin }) => {
               </div>
               <input
                 type={mostrarSenha?'text':'password'}
-                value={senha}
-                onChange={e=>{setSenha(e.target.value);setErro('');}}
+                value={password}
+                onChange={e=>{setPassword(e.target.value);setErro('');}}
                 onKeyDown={e=>e.key==='Enter'&&handleLogin()}
                 placeholder="Digite sua senha"
                 disabled={bloqueado}
@@ -3356,7 +4104,6 @@ const LoginScreen = ({ onLogin }) => {
             </div>
           </div>
 
-          {/* Erro */}
           {erro && (
             <div style={{
               background: C.redLight, border:`1px solid #FCA5A5`,
@@ -3371,7 +4118,6 @@ const LoginScreen = ({ onLogin }) => {
             </div>
           )}
 
-          {/* Botão */}
           <button
             onClick={handleLogin}
             disabled={loading || bloqueado}
@@ -3402,7 +4148,8 @@ const LoginScreen = ({ onLogin }) => {
 
       <style>{`
         @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-      `}</style>
+      
+        @keyframes loading { 0%{width:0%} 50%{width:100%} 100%{width:0%} }`}</style>
     </div>
   );
 };
@@ -3413,35 +4160,67 @@ const LoginScreen = ({ onLogin }) => {
 export default function TabocaGestao() {
   const isMobile = useIsMobile();
   const liveNow = useLiveClock();
-  const [autenticado, setAutenticado] = useState(() => {
-    const salvo = localStorage.getItem('taboca_auth');
-    if (!salvo) return false;
-    try {
-      const { ts } = JSON.parse(salvo);
-      return (Date.now() - ts) < 8 * 60 * 60 * 1000;
-    } catch { return false; }
-  });
+  const [autenticado, setAutenticado] = useState(false);
+  const [carregando, setCarregando] = useState(true);
   const [panel, setPanel] = useState('dashboard');
-  const [data, setData] = useState(mkData);
+  const [data, setData] = useState(null);
   const [modal, setModal] = useState(null);
   const [busca, setBusca] = useState('');
   const [buscaAberta, setBuscaAberta] = useState(false);
 
-  const handleLogin = () => {
-    localStorage.setItem('taboca_auth', JSON.stringify({ ts: Date.now() }));
-    setAutenticado(true);
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('taboca_auth');
-    setAutenticado(false);
-  };
-
-  // Verificar regressão de clientes fixos ao montar
   useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setAutenticado(true);
+        try {
+          const allData = await sbFetchAll();
+          setData(allData);
+        } catch (e) {
+          console.error('Fetch error, using fallback:', e);
+          setData(mkData());
+        }
+      }
+      setCarregando(false);
+    };
+    checkSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        setAutenticado(true);
+        try {
+          const allData = await sbFetchAll();
+          setData(allData);
+        } catch (e) {
+          console.error('Fetch error, using fallback:', e);
+          setData(mkData());
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setAutenticado(false);
+        setData(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogin = () => {
+    // Auth state change listener handles this
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setAutenticado(false);
+    setData(null);
+  };
+
+  // Verificar regressão de clientes fixos ao montar (precisa estar antes dos returns condicionais)
+  useEffect(() => {
+    if (!data) return;
     const tresSemanasAtras = new Date();
     tresSemanasAtras.setDate(tresSemanasAtras.getDate() - 21);
     setData(prev => {
+      if (!prev) return prev;
       const fixos = prev.grupos.find(g => g.id === 4)?.lista_cliente_ids || [];
       const regredidos = fixos.filter(cid => {
         const ultimoPedido = prev.pedidos
@@ -3450,6 +4229,12 @@ export default function TabocaGestao() {
         return !ultimoPedido || new Date(ultimoPedido.data_pedido) < tresSemanasAtras;
       });
       if (regredidos.length === 0) return prev;
+      // Persist group changes to Supabase
+      const grupo4 = prev.grupos.find(g => g.id === 4);
+      const grupo3 = prev.grupos.find(g => g.id === 3);
+      if (grupo4) sbUpdate('grupos', 4, { lista_cliente_ids: grupo4.lista_cliente_ids.filter(id => !regredidos.includes(id)) }).catch(console.error);
+      if (grupo3) sbUpdate('grupos', 3, { lista_cliente_ids: [...grupo3.lista_cliente_ids, ...regredidos] }).catch(console.error);
+      regredidos.forEach(cid => sbUpdate('clientes', cid, { grupo_id: 3 }).catch(console.error));
       return {
         ...prev,
         grupos: prev.grupos.map(g => {
@@ -3460,9 +4245,29 @@ export default function TabocaGestao() {
         clientes: prev.clientes.map(c => regredidos.includes(c.id) ? { ...c, grupo_id: 3 } : c)
       };
     });
-  }, []);
+  }, [data !== null]);
+
+  if (carregando) return (
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:C.bg,fontFamily:"'Montserrat', sans-serif"}}>
+      <div style={{textAlign:'center'}}>
+        <TabocaLogo size={100}/>
+        <div style={{marginTop:16,fontSize:14,fontWeight:600,color:C.navyLight}}>Carregando...</div>
+        <div style={{marginTop:8,width:40,height:4,borderRadius:2,background:C.border,margin:'0 auto',overflow:'hidden'}}>
+          <div style={{width:'60%',height:'100%',background:C.primary,borderRadius:2,animation:'loading 1.5s ease-in-out infinite'}}/>
+        </div>
+      </div>
+    </div>
+  );
 
   if (!autenticado) return <LoginScreen onLogin={handleLogin} />;
+  if (!data) return (
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:C.bg,fontFamily:"'Montserrat', sans-serif"}}>
+      <div style={{textAlign:'center'}}>
+        <TabocaLogo size={100}/>
+        <div style={{marginTop:16,fontSize:14,fontWeight:600,color:C.navyLight}}>Carregando dados...</div>
+      </div>
+    </div>
+  );
 
   const openModal = (name) => setModal(name);
   const closeModal = () => setModal(null);
@@ -3478,6 +4283,8 @@ export default function TabocaGestao() {
     atendimento:{ title:'Atendimento', subtitle:'Gestão de Mensagens com os Clientes.' },
     pedidos:{ title:'Pedidos & Entregas', subtitle:'Gestão do ciclo do pedido, da anotação até a roda de entrega.' },
     assistente:{ title:'Assistente de Gestão', subtitle:'Inteligência para gerenciamento.' },
+    campanhas:{ title:'Campanhas', subtitle:'Campanhas de venda para clientes.' },
+    canais:{ title:'Canais', subtitle:'Configuração WhatsApp e Instagram.' },
   };
 
   const info = panelInfo[panel]||panelInfo.dashboard;
@@ -3491,6 +4298,7 @@ export default function TabocaGestao() {
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #D4C4B8; border-radius: 3px; }
         @keyframes pulse { 0%,100%{opacity:0.3;transform:scale(0.8)} 50%{opacity:1;transform:scale(1)} }
+        @keyframes loading { 0%{transform:translateX(-100%)} 50%{transform:translateX(0%)} 100%{transform:translateX(100%)} }
       `}</style>
 
       {!isMobile && <Sidebar active={panel} setActive={setPanel} unreadCount={unreadCount} onLogout={handleLogout} />}
@@ -3505,12 +4313,17 @@ export default function TabocaGestao() {
         {panel==='estoque'&&<PanelEstoque data={data} setData={setData} openModal={openModal} isMobile={isMobile}/>}
         {panel==='producao'&&<PanelProducao data={data} setData={setData} openModal={openModal} isMobile={isMobile}/>}
         {panel==='clientes'&&<PanelClientes data={data} setData={setData} openModal={openModal} isMobile={isMobile}/>}
-        {panel==='atendimento'&&<PanelAtendimento data={data} setData={setData} isMobile={isMobile}/>}
+        {panel==='atendimento'&&<PanelAtendimento data={data} setData={setData} isMobile={isMobile} />}
         {panel==='pedidos'&&<PanelPedidos data={data} setData={setData} openModal={openModal} isMobile={isMobile}/>}
-        {panel==='assistente'&&<PanelAssistente data={data} settings={data.settings} isMobile={isMobile}/>}
+        {panel==='assistente'&&<PanelAssistente data={data} setData={setData} settings={data.settings} isMobile={isMobile}/>}
+        {panel==='campanhas'&&<PanelCampanhas data={data} setData={setData}/>}
+        {panel==='canais'&&<PanelCanaisConfig data={data} setData={setData}/>}
       </div>
 
       {isMobile && <BottomNav active={panel} setActive={setPanel} unreadCount={unreadCount} onLogout={handleLogout} />}
+
+      {/* Floating Chat Widget — visível em todos os painéis exceto o assistente */}
+      {panel!=='assistente' && <FloatingChat data={data} setData={setData} settings={data.settings} onExpand={()=>setPanel('assistente')} isMobile={isMobile}/>}
 
       {/* Modals */}
       <ModalNovaTransacao open={modal==='novaTransacao'} onClose={closeModal} data={data} setData={setData}/>
