@@ -29,14 +29,27 @@ export const sbUpsertSettings = async (settings) => {
   return data;
 };
 
+// Direct REST fetch — bypasses Supabase JS client which can hang on auth
+export const _restFetch = async (path) => {
+  const url = `${supabaseUrl}/rest/v1/${path}`;
+  const res = await fetch(url, {
+    headers: {
+      apikey: supabaseKey,
+      Authorization: `Bearer ${supabaseKey}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  if (!res.ok) throw new Error(`REST ${res.status}: ${path}`);
+  return res.json();
+};
+
 export const sbFetchTables = async (tableConfigs) => {
   const results = {};
   const settled = await Promise.allSettled(
-    tableConfigs.map(async ({ name, query }) => {
-      const q = query || supabase.from(name).select('*').order('id', { ascending: true });
-      const { data, error } = await q;
-      if (error) { console.error(`fetch ${name}:`, error); return { name, data: [] }; }
-      return { name, data };
+    tableConfigs.map(async ({ name, restPath }) => {
+      const path = restPath || `${name}?select=*&order=id.asc`;
+      const data = await _restFetch(path);
+      return { name, data: data || [] };
     })
   );
   settled.forEach(r => {

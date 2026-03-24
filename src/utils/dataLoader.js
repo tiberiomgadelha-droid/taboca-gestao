@@ -1,4 +1,4 @@
-import { supabase, sbFetchTables } from './supabase.js';
+import { sbFetchTables, _restFetch } from './supabase.js';
 
 export const sbFetchDashboard = async () => {
   const results = await sbFetchTables([
@@ -51,11 +51,12 @@ export const sbFetchOperational = async () => {
 export const sbFetchHeavy = async () => {
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const isoDate = thirtyDaysAgo.toISOString();
   const results = await sbFetchTables([
     { name: 'whatsapp_config' },
     { name: 'instagram_config' },
-    { name: 'mensagens', query: supabase.from('mensagens').select('*').order('created_at', { ascending: false }).limit(200) },
-    { name: 'activity_log', query: supabase.from('activity_log').select('*').gte('data', thirtyDaysAgo.toISOString()).order('data', { ascending: false }).limit(50) },
+    { name: 'mensagens', restPath: 'mensagens?select=*&order=created_at.desc&limit=200' },
+    { name: 'activity_log', restPath: `activity_log?select=*&data=gte.${isoDate}&order=data.desc&limit=50` },
   ]);
   return {
     mensagens: (results.mensagens || []).sort((a,b) => a.id - b.id),
@@ -73,9 +74,11 @@ export const sbFetchAll = async () => {
 };
 
 export const sbFetchOlderMessages = async (beforeId) => {
-  const { data, error } = await supabase
-    .from('mensagens').select('*').lt('id', beforeId)
-    .order('id', { ascending: false }).limit(100);
-  if (error) { console.error('fetch older messages:', error); return []; }
-  return (data || []).sort((a,b) => a.id - b.id);
+  try {
+    const data = await _restFetch(`mensagens?select=*&id=lt.${beforeId}&order=id.desc&limit=100`);
+    return (data || []).sort((a,b) => a.id - b.id);
+  } catch (e) {
+    console.error('fetch older messages:', e);
+    return [];
+  }
 };
