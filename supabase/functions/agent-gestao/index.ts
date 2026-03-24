@@ -1,38 +1,67 @@
-// ═══════════════════════════════════════════════════
 // EDGE FUNCTION: agent-gestao (Agente 1 — Assistente de Gestão)
 // POST /functions/v1/agent-gestao
 // Body: { message: string, context: object, history?: array }
 // Response: { reply: string, actions?: array }
-// ═══════════════════════════════════════════════════
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { corsHeaders } from '../_shared/cors.ts';
-import { callClaude } from '../_shared/anthropic.ts';
-import { getSupabaseAdmin } from '../_shared/supabase.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const RATE_LIMIT_WINDOW = 60_000; // 1 minuto
-const RATE_LIMIT_MAX = 15; // max requests por janela
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+};
+
+const RATE_LIMIT_WINDOW = 60_000;
+const RATE_LIMIT_MAX = 15;
 const requestLog: number[] = [];
 
 function checkRateLimit(): boolean {
   const now = Date.now();
-  // Limpa entries antigas
-  while (requestLog.length > 0 && requestLog[0] < now - RATE_LIMIT_WINDOW) {
-    requestLog.shift();
-  }
+  while (requestLog.length > 0 && requestLog[0] < now - RATE_LIMIT_WINDOW) requestLog.shift();
   if (requestLog.length >= RATE_LIMIT_MAX) return false;
   requestLog.push(now);
   return true;
 }
 
+async function callClaude(opts: { system: string; messages: any[]; max_tokens: number }) {
+  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
+
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: opts.max_tokens,
+      system: opts.system,
+      messages: opts.messages,
+    }),
+  });
+
+  if (!resp.ok) {
+    const errBody = await resp.text();
+    console.error('Anthropic API error:', resp.status, errBody);
+    throw new Error(`Anthropic error ${resp.status}: ${errBody}`);
+  }
+
+  const data = await resp.json();
+  return {
+    reply: data.content?.[0]?.text || '',
+    usage: data.usage,
+  };
+}
+
 serve(async (req) => {
-  // CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    // Rate limiting
     if (!checkRateLimit()) {
       return new Response(
         JSON.stringify({ error: 'Limite de requisições atingido. Aguarde um momento.' }),
@@ -49,12 +78,14 @@ serve(async (req) => {
       );
     }
 
-    // Buscar prompt base do settings
-    const supabase = getSupabaseAdmin();
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    );
+
     const { data: settings } = await supabase.from('settings').select('prompt_agente1').eq('id', 1).single();
     const promptBase = settings?.prompt_agente1 || 'Você é o assistente de gestão da Taboca Pão e Pizza.';
 
-    // Montar system prompt com contexto completo
     const systemPrompt = `${promptBase}
 
 DADOS ATUAIS DO SISTEMA (${new Date().toLocaleDateString('pt-BR')}):
@@ -80,7 +111,6 @@ FORMATO DE AÇÃO (quando aplicável):
 
 Você pode retornar múltiplas ações. Cada ação deve estar em seu próprio bloco \`\`\`action.`;
 
-    // Montar histórico de mensagens
     const messages = [
       ...history.map((m: { role: string; content: string }) => ({
         role: m.role as 'user' | 'assistant',
@@ -89,34 +119,25 @@ Você pode retornar múltiplas ações. Cada ação deve estar em seu próprio b
       { role: 'user' as const, content: message },
     ];
 
-    // Chamar Claude
     const { reply, usage } = await callClaude({
       system: systemPrompt,
       messages,
       max_tokens: 2048,
     });
 
-    // Extrair ações da resposta (se houver blocos ```action)
     const actions = extractActions(reply);
-
-    // Limpar a resposta (remover blocos de ação do texto exibido)
     const cleanReply = reply.replace(/```action\n[\s\S]*?```/g, '').trim();
 
     return new Response(
-      JSON.stringify({
-        reply: cleanReply,
-        actions: actions.length > 0 ? actions : undefined,
-        usage
-      }),
+      JSON.stringify({ reply: cleanReply, actions: actions.length > 0 ? actions : undefined, usage }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
-
   } catch (error) {
     console.error('agent-gestao error:', error);
     return new Response(
       JSON.stringify({
         error: error.message || 'Erro interno no assistente.',
-        reply: 'Desculpe, ocorreu um erro ao processar sua solicitação. Tente novamente em alguns instantes.'
+        reply: 'Desculpe, ocorreu um erro ao processar sua solicitação. Erro: ' + (error.message || 'desconhecido')
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -125,65 +146,46 @@ Você pode retornar múltiplas ações. Cada ação deve estar em seu próprio b
 
 function formatContext(ctx: any): string {
   if (!ctx) return 'Contexto não disponível.';
-
   const lines: string[] = [];
-
   if (ctx.financeiro) {
-    lines.push(`📊 FINANCEIRO DO MÊS:`);
+    lines.push('📊 FINANCEIRO DO MÊS:');
     lines.push(`  - Receita: R$ ${(ctx.financeiro.receita || 0).toFixed(2)}`);
     lines.push(`  - Despesas: R$ ${(ctx.financeiro.despesa || 0).toFixed(2)}`);
     lines.push(`  - Lucro: R$ ${(ctx.financeiro.lucro || 0).toFixed(2)}`);
     lines.push(`  - Meta: R$ ${(ctx.financeiro.meta || 0).toFixed(2)} (${(ctx.financeiro.percentual_meta || 0).toFixed(1)}% atingido)`);
   }
-
   if (ctx.estoque) {
-    lines.push(`\n📦 ESTOQUE:`);
-    if (ctx.estoque.produtos) {
-      lines.push(`  Produtos: ${ctx.estoque.produtos.map((p: any) => `${p.nome}: ${p.quantidade} unid (R$${p.valor_unitario})`).join(', ')}`);
-    }
-    if (ctx.estoque.alertas && ctx.estoque.alertas.length > 0) {
-      lines.push(`  ⚠️ ALERTAS: ${ctx.estoque.alertas.join('; ')}`);
-    }
-    if (ctx.estoque.insumos) {
-      lines.push(`  Insumos: ${ctx.estoque.insumos.map((i: any) => `${i.nome}: ${i.quantidade}${i.unidade}`).join(', ')}`);
-    }
+    lines.push('\n📦 ESTOQUE:');
+    if (ctx.estoque.produtos) lines.push(`  Produtos: ${ctx.estoque.produtos.map((p: any) => `${p.nome}: ${p.quantidade} unid (R$${p.valor_unitario})`).join(', ')}`);
+    if (ctx.estoque.alertas?.length > 0) lines.push(`  ⚠️ ALERTAS: ${ctx.estoque.alertas.join('; ')}`);
+    if (ctx.estoque.insumos) lines.push(`  Insumos: ${ctx.estoque.insumos.map((i: any) => `${i.nome}: ${i.quantidade}${i.unidade}`).join(', ')}`);
   }
-
   if (ctx.pedidos) {
     lines.push(`\n🛒 PEDIDOS EM ABERTO: ${ctx.pedidos.length}`);
     ctx.pedidos.slice(0, 10).forEach((p: any) => {
       lines.push(`  - Pedido #${p.id}: ${p.cliente_nome || 'Cliente'} — R$${p.valor_total} — Entrega: ${p.data_entrega} — Produção: ${p.status_producao} — Entrega: ${p.status_entrega}`);
     });
   }
-
   if (ctx.fornadas) {
-    lines.push(`\n🔥 PRÓXIMAS FORNADAS:`);
+    lines.push('\n🔥 PRÓXIMAS FORNADAS:');
     ctx.fornadas.forEach((f: any) => {
       lines.push(`  - ${f.data} (${f.tipo}) — ${f.hora_inicio} a ${f.hora_fim} — Encerramento encomendas: ${f.encerramento_encomenda || 'N/A'}`);
     });
   }
-
   if (ctx.clientes) {
     lines.push(`\n👥 CLIENTES: ${ctx.clientes.total} cadastrados`);
-    if (ctx.clientes.por_grupo) {
-      lines.push(`  Por grupo: ${ctx.clientes.por_grupo.map((g: any) => `${g.nome}: ${g.qtd}`).join(', ')}`);
-    }
+    if (ctx.clientes.por_grupo) lines.push(`  Por grupo: ${ctx.clientes.por_grupo.map((g: any) => `${g.nome}: ${g.qtd}`).join(', ')}`);
   }
-
   if (ctx.ultimas_atividades) {
-    lines.push(`\n📋 ÚLTIMAS ATIVIDADES:`);
-    ctx.ultimas_atividades.slice(0, 5).forEach((a: any) => {
-      lines.push(`  - ${a.descricao} (${a.data})`);
-    });
+    lines.push('\n📋 ÚLTIMAS ATIVIDADES:');
+    ctx.ultimas_atividades.slice(0, 5).forEach((a: any) => { lines.push(`  - ${a.descricao} (${a.data})`); });
   }
-
   if (ctx.transacoes_recentes) {
-    lines.push(`\n💰 TRANSAÇÕES RECENTES:`);
+    lines.push('\n💰 TRANSAÇÕES RECENTES:');
     ctx.transacoes_recentes.slice(0, 8).forEach((t: any) => {
       lines.push(`  - ${t.descricao}: ${t.tipo === 'receita' ? '+' : '-'}R$${t.valor} (${t.data})`);
     });
   }
-
   return lines.join('\n');
 }
 
@@ -192,12 +194,7 @@ function extractActions(text: string): any[] {
   const regex = /```action\n([\s\S]*?)```/g;
   let match;
   while ((match = regex.exec(text)) !== null) {
-    try {
-      const action = JSON.parse(match[1].trim());
-      actions.push(action);
-    } catch (e) {
-      console.error('Failed to parse action:', match[1]);
-    }
+    try { actions.push(JSON.parse(match[1].trim())); } catch (e) { console.error('Failed to parse action:', match[1]); }
   }
   return actions;
 }

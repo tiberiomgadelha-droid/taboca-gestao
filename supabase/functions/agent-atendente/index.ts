@@ -3,13 +3,58 @@
 // POST /functions/v1/agent-atendente
 // Body: { cliente_id: number, mensagem: string, canal: string, history?: array }
 // Response: { resposta: string, acoes?: array }
+// SELF-CONTAINED — no shared imports
 // ═══════════════════════════════════════════════════
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { corsHeaders } from '../_shared/cors.ts';
-import { callClaude } from '../_shared/anthropic.ts';
-import { getSupabaseAdmin } from '../_shared/supabase.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+// ── CORS ──
+const corsHeaders: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+// ── Supabase Admin ──
+function getSupabaseAdmin() {
+  return createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  );
+}
+
+// ── Claude API ──
+async function callClaude(opts: { system: string; messages: any[]; max_tokens: number }) {
+  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
+
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: opts.max_tokens,
+      system: opts.system,
+      messages: opts.messages,
+    }),
+  });
+
+  if (!resp.ok) {
+    const errBody = await resp.text();
+    console.error('Anthropic API error:', resp.status, errBody);
+    throw new Error(`Anthropic error ${resp.status}: ${errBody}`);
+  }
+
+  const data = await resp.json();
+  return { reply: data.content?.[0]?.text || '', usage: data.usage };
+}
+
+// ── Rate Limit ──
 const RATE_LIMIT_WINDOW = 60_000;
 const RATE_LIMIT_MAX = 30;
 const requestLog: number[] = [];
@@ -24,6 +69,22 @@ function checkRateLimit(): boolean {
   return true;
 }
 
+// ── Extract Actions ──
+function extractActions(text: string): any[] {
+  const actions: any[] = [];
+  const regex = /```action\n([\s\S]*?)```/g;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    try {
+      actions.push(JSON.parse(match[1].trim()));
+    } catch (e) {
+      console.error('Failed to parse action:', match[1]);
+    }
+  }
+  return actions;
+}
+
+// ── Main Handler ──
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -166,17 +227,3 @@ FORMATO DE AÇÃO (quando aplicável):
     );
   }
 });
-
-function extractActions(text: string): any[] {
-  const actions: any[] = [];
-  const regex = /```action\n([\s\S]*?)```/g;
-  let match;
-  while ((match = regex.exec(text)) !== null) {
-    try {
-      actions.push(JSON.parse(match[1].trim()));
-    } catch (e) {
-      console.error('Failed to parse action:', match[1]);
-    }
-  }
-  return actions;
-}

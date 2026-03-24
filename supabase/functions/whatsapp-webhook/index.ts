@@ -1,247 +1,325 @@
-// ═══════════════════════════════════════════════════
-// EDGE FUNCTION: whatsapp-webhook
-// Recebe mensagens do WhatsApp Business API (Meta)
-// GET: Verificação do webhook
-// POST: Mensagens recebidas
-// ═══════════════════════════════════════════════════
+// supabase/functions/whatsapp-webhook/index.ts
+// Edge Function para receber mensagens do WhatsApp Business API via webhook,
+// salvar no banco, responder usando agent-atendente (IA), e salvar a resposta.
 
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { corsHeaders } from '../_shared/cors.ts';
-import { getSupabaseAdmin } from '../_shared/supabase.ts';
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-serve(async (req) => {
-  const url = new URL(req.url);
+const WHATSAPP_VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") ?? "taboca_whatsapp_verify_2024";
+const WHATSAPP_ACCESS_TOKEN = Deno.env.get("WHATSAPP_API_TOKEN") ?? "";
+const WHATSAPP_PHONE_NUMBER_ID = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") ?? "";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "https://fvvgjvfnwylwdikooxae.supabase.co";
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 
-  // ── GET: Verificação do webhook pela Meta ──
-  if (req.method === 'GET') {
-    const mode = url.searchParams.get('hub.mode');
-    const token = url.searchParams.get('hub.verify_token');
-    const challenge = url.searchParams.get('hub.challenge');
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
-    const verifyToken = Deno.env.get('WHATSAPP_VERIFY_TOKEN');
+// Supabase Admin client (service role para insert direto)
+function getSupabaseAdmin() {
+  return createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
+}
 
-    if (mode === 'subscribe' && token === verifyToken) {
-      console.log('Webhook WhatsApp verificado com sucesso');
-      return new Response(challenge, { status: 200 });
-    }
-    return new Response('Forbidden', { status: 403 });
-  }
+// ── Enviar mensagem de texto via WhatsApp Business API ──
+async function sendWhatsAppMessage(to: string, message: string): Promise<void> {
+  const url = `https://graph.facebook.com/v18.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
+  const body = {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: to,
+    type: "text",
+    text: { preview_url: false, body: message },
+  };
 
-  // ── OPTIONS: CORS ──
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
-
-  // ── POST: Mensagem recebida ──
-  if (req.method === 'POST') {
-    try {
-      const body = await req.json();
-      const supabase = getSupabaseAdmin();
-
-      // Estrutura do webhook da Meta WhatsApp Business API
-      const entry = body?.entry?.[0];
-      const changes = entry?.changes?.[0];
-      const value = changes?.value;
-
-      if (!value?.messages || value.messages.length === 0) {
-        // Pode ser status update, delivery receipt, etc.
-        return new Response(JSON.stringify({ status: 'ok', type: 'non-message' }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      for (const msg of value.messages) {
-        const senderPhone = msg.from; // Número do remetente (formato: 5573XXXXXXXX)
-        const messageText = msg.text?.body || msg.caption || '[Mídia não suportada]';
-        const messageType = msg.type; // text, image, audio, etc.
-        const timestamp = msg.timestamp;
-
-        console.log(`WhatsApp msg de ${senderPhone}: ${messageText}`);
-
-        // Buscar cliente pelo WhatsApp
-        const phoneVariants = [
-          senderPhone,
-          `+${senderPhone}`,
-          senderPhone.replace(/^55/, ''),
-          `(${senderPhone.slice(2, 4)}) ${senderPhone.slice(4, 9)}-${senderPhone.slice(9)}`,
-        ];
-
-        let clienteId: number | null = null;
-        for (const phone of phoneVariants) {
-          const { data: cli } = await supabase
-            .from('clientes')
-            .select('id')
-            .ilike('whatsapp', `%${phone.slice(-8)}%`)
-            .limit(1)
-            .single();
-          if (cli) {
-            clienteId = cli.id;
-            break;
-          }
-        }
-
-        // Salvar mensagem no banco
-        const { data: savedMsg, error: msgError } = await supabase.from('mensagens').insert({
-          cliente_id: clienteId,
-          canal: 'whatsapp',
-          data_hora: new Date(parseInt(timestamp) * 1000).toISOString(),
-          conteudo: messageText,
-          status: 'nao_lida',
-          de_cliente: true,
-        }).select().single();
-
-        if (msgError) {
-          console.error('Erro ao salvar mensagem:', msgError);
-          continue;
-        }
-
-        // Verificar se atendimento automático está ativo
-        const { data: waConfig } = await supabase
-          .from('whatsapp_config')
-          .select('auto_reply, api_url, api_token, phone_number')
-          .eq('id', 1)
-          .single();
-
-        if (waConfig?.auto_reply && messageType === 'text') {
-          // Chamar agent-atendente para gerar resposta
-          try {
-            const agentUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/agent-atendente`;
-            const agentResp = await fetch(agentUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-              },
-              body: JSON.stringify({
-                cliente_id: clienteId,
-                mensagem: messageText,
-                canal: 'whatsapp',
-              }),
-            });
-
-            const agentData = await agentResp.json();
-            const resposta = agentData.resposta;
-
-            if (resposta) {
-              // Enviar resposta via WhatsApp API
-              await sendWhatsAppMessage(
-                waConfig.api_url || 'https://graph.facebook.com/v18.0',
-                waConfig.api_token,
-                waConfig.phone_number,
-                senderPhone,
-                resposta
-              );
-
-              // Salvar resposta no banco
-              await supabase.from('mensagens').insert({
-                cliente_id: clienteId,
-                canal: 'whatsapp',
-                data_hora: new Date().toISOString(),
-                conteudo: resposta,
-                status: 'enviada',
-                de_cliente: false,
-              });
-
-              // Processar ações do agente (ex: criar pedido)
-              if (agentData.acoes) {
-                for (const acao of agentData.acoes) {
-                  await processAction(supabase, acao, clienteId);
-                }
-              }
-            }
-          } catch (e) {
-            console.error('Erro no atendimento automático:', e);
-            // Fallback: enviar mensagem padrão
-            if (waConfig.api_token) {
-              await sendWhatsAppMessage(
-                waConfig.api_url || 'https://graph.facebook.com/v18.0',
-                waConfig.api_token,
-                waConfig.phone_number,
-                senderPhone,
-                'Recebemos sua mensagem! 😊 Responderemos em breve.'
-              );
-            }
-          }
-        }
-      }
-
-      return new Response(JSON.stringify({ status: 'ok' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-
-    } catch (error) {
-      console.error('Webhook error:', error);
-      // Retornar 200 mesmo em erro para evitar retry da Meta
-      return new Response(JSON.stringify({ status: 'error', message: error.message }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-  }
-
-  return new Response('Method not allowed', { status: 405 });
-});
-
-async function sendWhatsAppMessage(
-  apiUrl: string,
-  token: string,
-  phoneNumberId: string,
-  to: string,
-  text: string
-) {
-  const url = `${apiUrl}/${phoneNumberId}/messages`;
   const response = await fetch(url, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
+      "Authorization": `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to,
-      type: 'text',
-      text: { body: text },
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
-    const err = await response.text();
-    console.error('WhatsApp send error:', response.status, err);
-    throw new Error(`WhatsApp API error: ${response.status}`);
+    const errorText = await response.text();
+    console.error(`Erro ao enviar mensagem WhatsApp: ${response.status} - ${errorText}`);
+    throw new Error(`Falha ao enviar mensagem: ${response.status}`);
   }
-
-  return response.json();
+  console.log("Mensagem WhatsApp enviada com sucesso para:", to);
 }
 
-async function processAction(supabase: any, acao: any, clienteId: number | null) {
+// ── Marcar mensagem como lida no WhatsApp ──
+async function markAsRead(messageId: string): Promise<void> {
+  const url = `https://graph.facebook.com/v18.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
+  await fetch(url, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      status: "read",
+      message_id: messageId,
+    }),
+  });
+}
+
+// ── Buscar ou criar cliente pelo número WhatsApp ──
+// Retorna { id, bot_ativo } para controlar se o agente IA deve responder
+async function findOrCreateCliente(supabase: any, phone: string, nome: string): Promise<{ id: number; bot_ativo: boolean }> {
+  // Formatar número: remover prefixo "55" se necessário para busca
+  const phoneClean = phone.replace(/\D/g, '');
+
+  // Buscar por número WhatsApp (tenta variações)
+  const { data: existing } = await supabase
+    .from('clientes')
+    .select('id, nome, bot_ativo')
+    .or(`whatsapp.eq.${phoneClean},whatsapp.eq.+${phoneClean},whatsapp.eq.${phoneClean.replace(/^55/, '')}`)
+    .limit(1);
+
+  if (existing && existing.length > 0) {
+    console.log(`Cliente encontrado: ${existing[0].nome} (ID: ${existing[0].id}, bot_ativo: ${existing[0].bot_ativo})`);
+    return { id: existing[0].id, bot_ativo: existing[0].bot_ativo !== false };
+  }
+
+  // Criar novo cliente (bot_ativo = true por padrão)
+  const { data: newClient, error } = await supabase
+    .from('clientes')
+    .insert({
+      nome: nome || `WhatsApp ${phoneClean}`,
+      whatsapp: phoneClean,
+      data_cadastro: new Date().toISOString().split('T')[0],
+      bot_ativo: true,
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    console.error('Erro ao criar cliente:', error);
+    throw new Error('Falha ao criar cliente');
+  }
+
+  console.log(`Novo cliente criado: ${nome} (ID: ${newClient.id})`);
+  return { id: newClient.id, bot_ativo: true };
+}
+
+// ── Salvar mensagem no banco ──
+async function saveMensagem(supabase: any, opts: {
+  cliente_id: number;
+  canal: string;
+  conteudo: string;
+  de_cliente: boolean;
+  origem?: string;
+  external_id?: string;
+}): Promise<any> {
+  const { data, error } = await supabase
+    .from('mensagens')
+    .insert({
+      cliente_id: opts.cliente_id,
+      canal: opts.canal,
+      data_hora: new Date().toISOString(),
+      conteudo: opts.conteudo,
+      status: opts.de_cliente ? 'nao_lida' : 'enviada',
+      de_cliente: opts.de_cliente,
+      origem: opts.origem || (opts.de_cliente ? undefined : 'ia_automatico'),
+      external_id: opts.external_id,
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    console.error('Erro ao salvar mensagem:', error);
+    // Não lançar erro — não queremos bloquear o fluxo
+    return null;
+  }
+  return data;
+}
+
+// ── Chamar agent-atendente (IA de atendimento ao cliente) ──
+async function callAgentAtendente(clienteId: number, mensagem: string, canal: string, history: any[] = []): Promise<string> {
+  const url = `${SUPABASE_URL}/functions/v1/agent-atendente`;
+
   try {
-    if (acao.type === 'criar_pedido' && clienteId && acao.data) {
-      const pedido = {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({
         cliente_id: clienteId,
-        data_pedido: new Date().toISOString().slice(0, 10),
-        data_entrega: acao.data.data_entrega || new Date().toISOString().slice(0, 10),
-        localidade_id: acao.data.localidade_id || 1,
-        itens: acao.data.itens || [],
-        valor_total: acao.data.valor_total || 0,
-        status_producao: 'pendente',
-        status_entrega: 'aguardando',
-        observacoes: acao.data.observacoes || 'Pedido via WhatsApp (atendimento automático)',
-        pagamento_confirmado: false,
-      };
-      await supabase.from('pedidos').insert(pedido);
-      await supabase.from('activity_log').insert({
-        tipo: 'pedido',
-        descricao: `Pedido criado via WhatsApp (IA) — Cliente #${clienteId} — R$${pedido.valor_total}`,
-        data: new Date().toISOString(),
-        operador: 'Agente IA',
-        icon: 'pedido',
+        mensagem: mensagem,
+        canal: canal,
+        history: history,
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`Erro no agent-atendente: ${response.status} - ${errText}`);
+      return "Olá! Obrigado por entrar em contato com a Taboca Pão e Pizza 🍞🍕 Estamos com uma dificuldade técnica no momento, mas logo retornaremos. Tente novamente em alguns minutos!";
+    }
+
+    const data = await response.json();
+    return data.resposta || data.reply || "Desculpe, não consegui processar sua mensagem.";
+  } catch (error) {
+    console.error("Erro ao chamar agent-atendente:", error);
+    return "Olá! Obrigado por entrar em contato com a Taboca Pão e Pizza 🍞🍕 Estamos com uma dificuldade técnica no momento. Tente novamente em breve!";
+  }
+}
+
+// ── Extrair dados da mensagem recebida do payload do Meta ──
+function extractMessageData(body: any) {
+  try {
+    const entry = body?.entry?.[0];
+    const changes = entry?.changes?.[0];
+    const value = changes?.value;
+
+    if (!value?.messages || value.messages.length === 0) {
+      return null; // Status update, não mensagem
+    }
+
+    const message = value.messages[0];
+    const contact = value.contacts?.[0];
+
+    if (message.type !== "text") {
+      console.log(`Tipo de mensagem não suportado: ${message.type}`);
+      return null;
+    }
+
+    return {
+      from: message.from,
+      messageText: message.text.body,
+      messageId: message.id,
+      senderName: contact?.profile?.name || "Cliente",
+    };
+  } catch (error) {
+    console.error("Erro ao extrair dados da mensagem:", error);
+    return null;
+  }
+}
+
+// ════════════════════════════════════════════════════
+// Handler principal
+// ════════════════════════════════════════════════════
+serve(async (req: Request) => {
+  // CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  // GET — Verificação do webhook (challenge do Meta)
+  if (req.method === "GET") {
+    const url = new URL(req.url);
+    const mode = url.searchParams.get("hub.mode");
+    const token = url.searchParams.get("hub.verify_token");
+    const challenge = url.searchParams.get("hub.challenge");
+
+    console.log(`Webhook verification: mode=${mode}, token=${token}`);
+
+    if (mode === "subscribe" && token === WHATSAPP_VERIFY_TOKEN) {
+      console.log("Webhook verificado com sucesso!");
+      return new Response(challenge, {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "text/plain" },
+      });
+    } else {
+      console.error("Falha na verificação do webhook: token inválido");
+      return new Response("Forbidden", { status: 403, headers: corsHeaders });
+    }
+  }
+
+  // POST — Processar mensagem recebida do WhatsApp
+  if (req.method === "POST") {
+    try {
+      const body = await req.json();
+      console.log("Webhook POST recebido:", JSON.stringify(body).substring(0, 500));
+
+      const messageData = extractMessageData(body);
+
+      if (!messageData) {
+        return new Response(JSON.stringify({ status: "ok" }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      console.log(`Mensagem de ${messageData.from} (${messageData.senderName}): ${messageData.messageText}`);
+
+      const supabase = getSupabaseAdmin();
+
+      // 1. Buscar ou criar cliente
+      const cliente = await findOrCreateCliente(supabase, messageData.from, messageData.senderName);
+      const clienteId = cliente.id;
+
+      // 2. Salvar mensagem do cliente no banco
+      await saveMensagem(supabase, {
+        cliente_id: clienteId,
+        canal: 'whatsapp',
+        conteudo: messageData.messageText,
+        de_cliente: true,
+        external_id: messageData.messageId,
+      });
+
+      // 3. Marcar como lida no WhatsApp
+      await markAsRead(messageData.messageId);
+
+      // 4. Verificar se o bot está ativo para este cliente
+      if (!cliente.bot_ativo) {
+        console.log(`🚫 Bot desativado para cliente ID ${clienteId} — mensagem salva, aguardando atendimento manual.`);
+        return new Response(JSON.stringify({ status: "ok", processed: true, bot_skipped: true }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // 5. Buscar histórico recente para contexto
+      const { data: recentMsgs } = await supabase
+        .from('mensagens')
+        .select('conteudo, de_cliente')
+        .eq('cliente_id', clienteId)
+        .order('data_hora', { ascending: false })
+        .limit(6);
+
+      const history = (recentMsgs || []).reverse().slice(0, -1).map((m: any) => ({
+        role: m.de_cliente ? 'user' : 'assistant',
+        content: m.conteudo,
+      }));
+
+      // 6. Chamar IA (agent-atendente) para gerar resposta
+      const aiResponse = await callAgentAtendente(clienteId, messageData.messageText, 'whatsapp', history);
+
+      // 7. Salvar resposta da IA no banco
+      await saveMensagem(supabase, {
+        cliente_id: clienteId,
+        canal: 'whatsapp',
+        conteudo: aiResponse,
+        de_cliente: false,
+        origem: 'ia_automatico',
+      });
+
+      // 8. Enviar resposta de volta via WhatsApp
+      await sendWhatsAppMessage(messageData.from, aiResponse);
+
+      console.log(`✅ Fluxo completo: mensagem recebida → salva → IA respondeu → resposta salva → enviada para ${messageData.from}`);
+
+      return new Response(JSON.stringify({ status: "ok", processed: true }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error("Erro no processamento:", error);
+      return new Response(JSON.stringify({ status: "error", message: error.message }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    if (acao.type === 'atualizar_cliente' && clienteId && acao.data) {
-      await supabase.from('clientes').update(acao.data).eq('id', clienteId);
-    }
-  } catch (e) {
-    console.error('Erro ao processar ação:', e);
   }
-}
+
+  return new Response("Method not allowed", { status: 405, headers: corsHeaders });
+});

@@ -39,36 +39,109 @@ const sbUpsertSettings = async (settings) => {
   return data;
 };
 
-const sbFetchAll = async () => {
-  const tables = ['settings','colaboradores','produtos','insumos','fichas','transactions','producoes','bens','localidades','grupos','clientes','pedidos','mensagens','rotas','fornadas','activity_log','campanhas','whatsapp_config','instagram_config'];
+// ── Fetch helper com Promise.allSettled (não trava se uma query falhar) ──
+const sbFetchTables = async (tableConfigs) => {
   const results = {};
-  const promises = tables.map(async (table) => {
-    const { data, error } = await supabase.from(table).select('*').order('id', { ascending: true });
-    if (error) { console.error(`fetch ${table}:`, error); results[table] = []; }
-    else { results[table] = data; }
+  const settled = await Promise.allSettled(
+    tableConfigs.map(async ({ name, query }) => {
+      const q = query || supabase.from(name).select('*').order('id', { ascending: true });
+      const { data, error } = await q;
+      if (error) { console.error(`fetch ${name}:`, error); return { name, data: [] }; }
+      return { name, data };
+    })
+  );
+  settled.forEach(r => {
+    if (r.status === 'fulfilled') results[r.value.name] = r.value.data;
+    else results[r.reason?.name || 'unknown'] = [];
   });
-  await Promise.all(promises);
+  return results;
+};
+
+// Fase 1: dados essenciais (carrega rápido, libera a tela)
+const sbFetchEssential = async () => {
+  const results = await sbFetchTables([
+    { name: 'settings' },
+    { name: 'colaboradores' },
+    { name: 'produtos' },
+    { name: 'insumos' },
+    { name: 'fichas' },
+    { name: 'clientes' },
+    { name: 'grupos' },
+    { name: 'localidades' },
+  ]);
   return {
     settings: results.settings?.[0] || {},
     colaboradores: results.colaboradores || [],
     produtos: results.produtos || [],
     insumos: results.insumos || [],
     fichas: results.fichas || [],
+    clientes: results.clientes || [],
+    grupos: results.grupos || [],
+    localidades: results.localidades || [],
+    // Inicializar vazios (serão carregados na Fase 2)
+    transactions: [],
+    producoes: [],
+    bens: [],
+    pedidos: [],
+    rotas: [],
+    fornadas: [],
+    mensagens: [],
+    activityLog: [],
+    campanhas: [],
+    whatsapp_config: {},
+    instagram_config: {},
+  };
+};
+
+// Fase 2: dados secundários (carrega em background após tela renderizar)
+const sbFetchSecondary = async () => {
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const results = await sbFetchTables([
+    { name: 'transactions' },
+    { name: 'producoes' },
+    { name: 'bens' },
+    { name: 'pedidos' },
+    { name: 'rotas' },
+    { name: 'fornadas' },
+    { name: 'campanhas' },
+    { name: 'whatsapp_config' },
+    { name: 'instagram_config' },
+    { name: 'mensagens', query: supabase.from('mensagens').select('*').order('created_at', { ascending: false }).limit(200) },
+    { name: 'activity_log', query: supabase.from('activity_log').select('*').gte('data', thirtyDaysAgo.toISOString()).order('data', { ascending: false }) },
+  ]);
+  return {
     transactions: results.transactions || [],
     producoes: results.producoes || [],
     bens: results.bens || [],
-    localidades: results.localidades || [],
-    grupos: results.grupos || [],
-    clientes: results.clientes || [],
     pedidos: results.pedidos || [],
-    mensagens: results.mensagens || [],
     rotas: results.rotas || [],
     fornadas: results.fornadas || [],
+    mensagens: (results.mensagens || []).sort((a,b) => a.id - b.id),
     activityLog: (results.activity_log || []).sort((a,b) => new Date(b.data) - new Date(a.data)),
     campanhas: results.campanhas || [],
     whatsapp_config: results.whatsapp_config?.[0] || {},
     instagram_config: results.instagram_config?.[0] || {},
   };
+};
+
+// Função para carregar mais mensagens antigas (paginação)
+const sbFetchOlderMessages = async (beforeId) => {
+  const { data, error } = await supabase
+    .from('mensagens')
+    .select('*')
+    .lt('id', beforeId)
+    .order('id', { ascending: false })
+    .limit(100);
+  if (error) { console.error('fetch older messages:', error); return []; }
+  return (data || []).sort((a,b) => a.id - b.id);
+};
+
+// Compatibilidade: sbFetchAll carrega tudo (usado como fallback)
+const sbFetchAll = async () => {
+  const essential = await sbFetchEssential();
+  const secondary = await sbFetchSecondary();
+  return { ...essential, ...secondary };
 };
 
 // ═══════════════════════════════════════════════════
@@ -2728,7 +2801,7 @@ const PanelAtendimento = ({data, setData, isMobile}) => {
                 <div style={{display:'flex',alignItems:'center',gap:8}}>
                   <div style={{width:34,height:34,borderRadius:17,background:hasUnread?C.primary:'#EEE',display:'flex',alignItems:'center',justifyContent:'center',color:hasUnread?'#fff':C.navyLight,fontSize:13,fontWeight:700,flexShrink:0}}>{cli?.nome?.[0]||'?'}</div>
                   <div>
-                    <div style={{fontWeight:hasUnread?700:500,color:C.navy,fontSize:12}}>{cli?.nome||'Desconhecido'}</div>
+                    <div style={{fontWeight:hasUnread?700:500,color:C.navy,fontSize:12,display:'flex',alignItems:'center',gap:4}}>{cli?.nome||'Desconhecido'}{cli?.bot_ativo===false&&<span title="Bot desativado — atendimento manual" style={{fontSize:8,background:'#FFF3F3',color:C.red,borderRadius:3,padding:'1px 4px',fontWeight:700}}>MANUAL</span>}</div>
                     <div style={{fontSize:10,color:C.navyLight,display:'flex',alignItems:'center',gap:3}}>{conv.ultima.canal==='whatsapp'?'💬':'📷'}{conv.ultima.canal}</div>
                   </div>
                 </div>
@@ -2751,6 +2824,26 @@ const PanelAtendimento = ({data, setData, isMobile}) => {
             <div style={{flex:1}}><div style={{fontWeight:700,color:C.navy}}>{selCli?.nome}</div><div style={{fontSize:11,color:C.navyLight}}>{selCli?.whatsapp} {selCli?.instagram&&'· '+selCli?.instagram}</div></div>
             <div style={{display:'flex',gap:8,alignItems:'center'}}>
               {data.pedidos.filter(p=>p.cliente_id===selCliente&&p.status_entrega!=='entregue').length>0&&<Badge color='yellow'>{data.pedidos.filter(p=>p.cliente_id===selCliente&&p.status_entrega!=='entregue').length} pedido(s)</Badge>}
+              {/* Toggle Bot IA por cliente */}
+              <button
+                onClick={async ()=>{
+                  const newVal = !(selCli?.bot_ativo !== false);
+                  setData(prev=>({...prev, clientes: prev.clientes.map(c=>c.id===selCliente?{...c,bot_ativo:newVal}:c)}));
+                  try { await sbUpdate('clientes', selCliente, { bot_ativo: newVal }); } catch(e) { console.error('Erro ao atualizar bot_ativo:', e); }
+                }}
+                title={selCli?.bot_ativo !== false ? 'Bot IA ativo — clique para desativar e atender manualmente' : 'Bot IA desativado — clique para reativar atendimento automático'}
+                style={{
+                  display:'flex',alignItems:'center',gap:5,
+                  border:`1px solid ${selCli?.bot_ativo !== false ? C.green : C.border}`,
+                  background: selCli?.bot_ativo !== false ? '#E8F5E9' : '#FFF3F3',
+                  color: selCli?.bot_ativo !== false ? C.green : C.red,
+                  borderRadius:6,padding:'4px 10px',cursor:'pointer',fontSize:11,fontWeight:600,
+                  transition:'all 0.2s',
+                }}
+              >
+                <Bot size={13}/>
+                {selCli?.bot_ativo !== false ? 'Bot ON' : 'Bot OFF'}
+              </button>
             </div>
           </div>
           <div style={{flex:1,overflowY:'auto',padding:'16px 20px',display:'flex',flexDirection:'column',gap:8}}>
@@ -4168,33 +4261,39 @@ export default function TabocaGestao() {
   const [busca, setBusca] = useState('');
   const [buscaAberta, setBuscaAberta] = useState(false);
 
+  // Carregamento em 2 fases: essencial (rápido) → secundário (background)
+  const loadData = async () => {
+    try {
+      // Fase 1: dados essenciais — libera a tela rapidamente
+      const essential = await sbFetchEssential();
+      setData(essential);
+      setCarregando(false);
+      // Fase 2: dados secundários — carrega em background (não bloqueia UI)
+      const secondary = await sbFetchSecondary();
+      setData(prev => prev ? { ...prev, ...secondary } : { ...essential, ...secondary });
+    } catch (e) {
+      console.error('Fetch error, using fallback:', e);
+      setData(mkData());
+      setCarregando(false);
+    }
+  };
+
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         setAutenticado(true);
-        try {
-          const allData = await sbFetchAll();
-          setData(allData);
-        } catch (e) {
-          console.error('Fetch error, using fallback:', e);
-          setData(mkData());
-        }
+        await loadData();
+      } else {
+        setCarregando(false);
       }
-      setCarregando(false);
     };
     checkSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session) {
         setAutenticado(true);
-        try {
-          const allData = await sbFetchAll();
-          setData(allData);
-        } catch (e) {
-          console.error('Fetch error, using fallback:', e);
-          setData(mkData());
-        }
+        await loadData();
       } else if (event === 'SIGNED_OUT') {
         setAutenticado(false);
         setData(null);
@@ -4203,6 +4302,57 @@ export default function TabocaGestao() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // ═══════════════════════════════════════════════════
+  // REALTIME: escutar novas mensagens e clientes em tempo real
+  // ═══════════════════════════════════════════════════
+  useEffect(() => {
+    if (!autenticado || !data) return;
+
+    // Canal para mensagens
+    const msgChannel = supabase
+      .channel('realtime-mensagens')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mensagens' }, (payload) => {
+        console.log('Realtime: nova mensagem recebida', payload.new);
+        setData(prev => {
+          if (!prev) return prev;
+          // Evitar duplicatas (verificar se já existe pelo id)
+          if (prev.mensagens.some(m => m.id === payload.new.id)) return prev;
+          return { ...prev, mensagens: [...prev.mensagens, payload.new] };
+        });
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'mensagens' }, (payload) => {
+        setData(prev => {
+          if (!prev) return prev;
+          return { ...prev, mensagens: prev.mensagens.map(m => m.id === payload.new.id ? { ...m, ...payload.new } : m) };
+        });
+      })
+      .subscribe();
+
+    // Canal para clientes (novos clientes criados pelo webhook)
+    const cliChannel = supabase
+      .channel('realtime-clientes')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'clientes' }, (payload) => {
+        console.log('Realtime: novo cliente criado', payload.new);
+        setData(prev => {
+          if (!prev) return prev;
+          if (prev.clientes.some(c => c.id === payload.new.id)) return prev;
+          return { ...prev, clientes: [...prev.clientes, payload.new] };
+        });
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'clientes' }, (payload) => {
+        setData(prev => {
+          if (!prev) return prev;
+          return { ...prev, clientes: prev.clientes.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c) };
+        });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(msgChannel);
+      supabase.removeChannel(cliChannel);
+    };
+  }, [autenticado, !!data]);
 
   const handleLogin = () => {
     // Auth state change listener handles this
