@@ -26,7 +26,8 @@ function getSupabaseAdmin() {
 
 // ── Enviar mensagem de resposta via Instagram Messaging API ──
 async function sendInstagramMessage(recipientId: string, message: string): Promise<void> {
-  const url = `https://graph.facebook.com/v18.0/${INSTAGRAM_PAGE_ID}/messages`;
+  // Endpoint correto para Instagram Direct: graph.instagram.com (NÃO graph.facebook.com)
+  const url = `https://graph.instagram.com/v21.0/me/messages`;
   const body = {
     recipient: { id: recipientId },
     message: { text: message },
@@ -52,7 +53,7 @@ async function sendInstagramMessage(recipientId: string, message: string): Promi
 // ── Buscar nome do usuário Instagram via Graph API ──
 async function getInstagramUsername(userId: string): Promise<string> {
   try {
-    const url = `https://graph.facebook.com/v18.0/${userId}?fields=name,username&access_token=${INSTAGRAM_ACCESS_TOKEN}`;
+    const url = `https://graph.facebook.com/v21.0/${userId}?fields=name,username&access_token=${INSTAGRAM_ACCESS_TOKEN}`;
     const response = await fetch(url);
     if (response.ok) {
       const data = await response.json();

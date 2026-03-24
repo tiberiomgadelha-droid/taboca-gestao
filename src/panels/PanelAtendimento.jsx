@@ -6,6 +6,35 @@ import { fmtCurrency, fmtDate, fmtDateTime, daysUntil, isLowStock, isExpiringSoo
 import { sbFetchOlderMessages } from "../utils/dataLoader.js";
 import { C, s, Btn, Badge, Modal, FormField, Input, Select, Textarea, Divider, ImageUpload, processarImagem, logActivity, useIsMobile } from "../components/ui.jsx";
 
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+// Chamar o agente IA de atendimento (Supabase Edge Function)
+const callAgentAtendente = async (cliente_id, mensagem, canal, history=[]) => {
+  const resp = await fetch(`${supabaseUrl}/functions/v1/agent-atendente`, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+    body: JSON.stringify({ cliente_id, mensagem, canal, history })
+  });
+  if(!resp.ok) throw new Error(`Erro ${resp.status}`);
+  return resp.json();
+};
+
+// Enviar mensagem de volta ao cliente via Instagram Direct (Supabase Edge Function)
+const sendInstagramReply = async (recipientId, message) => {
+  const resp = await fetch(`${supabaseUrl}/functions/v1/send-instagram-reply`, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+    body: JSON.stringify({ recipient_id: recipientId, message })
+  });
+  if(!resp.ok) {
+    const errData = await resp.json().catch(()=>({}));
+    console.error('Erro ao enviar Instagram reply:', errData);
+    throw new Error(errData.error || `Erro ${resp.status}`);
+  }
+  return resp.json();
+};
+
 const PanelAtendimento = ({data, setData, isMobile}) => {
   const [selCliente, setSelCliente] = useState(null);
   const [filtro, setFiltro] = useState('todos');
@@ -62,24 +91,67 @@ const PanelAtendimento = ({data, setData, isMobile}) => {
   };
 
   // Enviar mensagem (manual ou aprovação de IA)
-  const enviarMensagem = (texto) => {
+  const [sendingMsg, setSendingMsg] = useState(false);
+  const [sendError, setSendError] = useState('');
+
+  const enviarMensagem = async (texto) => {
     const content = texto || msgInput.trim();
-    if(!content || !selCliente) return;
+    if(!content || !selCliente || sendingMsg) return;
+    setSendingMsg(true);
+    setSendError('');
+
+    const canal = selMsgs[selMsgs.length-1]?.canal || 'whatsapp';
     const novaMensagem = {
       id: Date.now(),
       cliente_id: selCliente,
-      canal: selMsgs[selMsgs.length-1]?.canal || 'whatsapp',
+      canal,
       data_hora: new Date().toISOString(),
       conteudo: content,
-      status: 'enviada',
+      status: 'enviando',
       de_cliente: false,
       origem: texto ? 'ia_assistido' : 'manual',
     };
+
+    // Atualizar UI imediatamente (otimista)
     setData(prev=>({...prev, mensagens:[...prev.mensagens, novaMensagem]}));
-    sbInsert('mensagens', {cliente_id:novaMensagem.cliente_id,canal:novaMensagem.canal,data_hora:novaMensagem.data_hora,conteudo:novaMensagem.conteudo,status:'enviada',de_cliente:false,origem:novaMensagem.origem}).catch(console.error);
     setMsgInput('');
     setAiSuggestion('');
-    logActivity(setData, 'mensagem', `Mensagem enviada para ${selCli?.nome||'cliente'} via ${novaMensagem.canal}`, 'Tiberio');
+
+    try {
+      // 1. Enviar a mensagem de volta ao cliente via API do canal
+      if (canal === 'instagram') {
+        // Para Instagram: buscar o ID do Instagram do cliente para usar como recipient
+        const instagramId = selCli?.instagram;
+        if (instagramId) {
+          await sendInstagramReply(instagramId, content);
+        } else {
+          console.warn('Cliente sem instagram ID — mensagem salva mas não enviada via DM');
+        }
+      }
+      // TODO: Adicionar envio WhatsApp aqui quando necessário
+
+      // 2. Salvar no banco com status 'enviada'
+      await sbInsert('mensagens', {
+        cliente_id: novaMensagem.cliente_id,
+        canal: novaMensagem.canal,
+        data_hora: novaMensagem.data_hora,
+        conteudo: novaMensagem.conteudo,
+        status: 'enviada',
+        de_cliente: false,
+        origem: novaMensagem.origem,
+      });
+
+      // Atualizar status na UI para 'enviada'
+      setData(prev=>({...prev, mensagens: prev.mensagens.map(m=>m.id===novaMensagem.id?{...m,status:'enviada'}:m)}));
+      logActivity(setData, 'mensagem', `Mensagem enviada para ${selCli?.nome||'cliente'} via ${canal}`, 'Tiberio');
+    } catch(err) {
+      console.error('Erro ao enviar mensagem:', err);
+      setSendError(`Falha ao enviar: ${err.message}`);
+      // Marcar como erro na UI
+      setData(prev=>({...prev, mensagens: prev.mensagens.map(m=>m.id===novaMensagem.id?{...m,status:'erro'}:m)}));
+    } finally {
+      setSendingMsg(false);
+    }
   };
 
   return (
@@ -179,7 +251,10 @@ const PanelAtendimento = ({data, setData, isMobile}) => {
                 <div style={{maxWidth:'70%',background:m.de_cliente?'#fff':C.primary,color:m.de_cliente?C.navy:'#fff',borderRadius:m.de_cliente?'4px 12px 12px 12px':'12px 4px 12px 12px',padding:'10px 14px',boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
                   <div style={{fontSize:13,lineHeight:1.5}}>{m.conteudo}</div>
                   <div style={{fontSize:9,marginTop:4,opacity:0.7,textAlign:'right',display:'flex',alignItems:'center',gap:4,justifyContent:'flex-end'}}>
-                    {fmtDateTime(m.data_hora)} {!m.de_cliente&&'✓✓'}
+                    {fmtDateTime(m.data_hora)}
+                    {!m.de_cliente && m.status==='enviando' && <span style={{fontSize:8}}>⏳</span>}
+                    {!m.de_cliente && m.status==='enviada' && '✓✓'}
+                    {!m.de_cliente && m.status==='erro' && <span style={{color:'#FF4444',fontWeight:700,fontSize:8}}>❌ Falhou</span>}
                     {!m.de_cliente && m.origem && m.origem!=='manual' && <span style={{background:'rgba(255,255,255,0.2)',borderRadius:3,padding:'1px 4px',fontSize:8}}>🤖 IA</span>}
                   </div>
                 </div>
@@ -204,13 +279,23 @@ const PanelAtendimento = ({data, setData, isMobile}) => {
             </div>
           )}
 
+          {sendError && (
+            <div style={{background:'#FFF3F3',borderTop:`2px solid #FF4444`,padding:'8px 20px',display:'flex',alignItems:'center',gap:8}}>
+              <AlertCircle size={14} color='#FF4444'/>
+              <span style={{fontSize:11,color:'#FF4444',flex:1}}>{sendError}</span>
+              <button onClick={()=>setSendError('')} style={{border:'none',background:'none',cursor:'pointer'}}><X size={12} color='#999'/></button>
+            </div>
+          )}
           <div style={{background:'#fff',borderTop:`1px solid ${C.border}`,padding:'12px 20px',display:'flex',gap:8,alignItems:'flex-end'}}>
             <button onClick={gerarRespostaIA} disabled={aiLoading} style={{...s.btnSm,background:C.amber,height:38,paddingInline:12}} title="Gerar resposta com IA">
               {aiLoading ? <Loader size={13} style={{animation:'pulse 1s infinite'}}/> : <Bot size={13}/>}
               <span style={{fontSize:11}}>IA</span>
             </button>
             <input value={msgInput} onChange={e=>setMsgInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();enviarMensagem();}}} placeholder="Digite uma mensagem..." style={{...s.input,flex:1}}/>
-            <Btn onClick={()=>enviarMensagem()} disabled={!msgInput.trim()} style={{height:38}}><Send size={14}/>Enviar</Btn>
+            <Btn onClick={()=>enviarMensagem()} disabled={!msgInput.trim()||sendingMsg} style={{height:38}}>
+              {sendingMsg ? <Loader size={14} style={{animation:'spin 1s linear infinite'}}/> : <Send size={14}/>}
+              {sendingMsg ? 'Enviando...' : 'Enviar'}
+            </Btn>
           </div>
         </div>
       ):(
