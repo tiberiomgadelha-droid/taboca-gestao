@@ -337,22 +337,48 @@ export default function TabocaGestao() {
       setData(prev => prev ? { ...prev, ...heavy } : { ...dashboard, ...operational, ...heavy });
     } catch (e) {
       console.error('Fetch error, using fallback:', e);
-      setData(mkData());
+      try {
+        setData(mkData());
+      } catch (e2) {
+        console.error('mkData fallback also failed:', e2);
+        setData({ settings:{}, transactions:[], produtos:[], insumos:[], pedidos:[],
+          colaboradores:[], fichas:[], clientes:[], grupos:[], localidades:[],
+          producoes:[], bens:[], rotas:[], fornadas:[], mensagens:[], activityLog:[],
+          campanhas:[], whatsapp_config:{}, instagram_config:{} });
+      }
       setCarregando(false);
     }
   }, []);
 
   useEffect(() => {
     const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setAutenticado(true);
-        await loadData();
-      } else {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) {
+          console.error('getSession error:', error);
+          setCarregando(false);
+          return;
+        }
+        if (session) {
+          setAutenticado(true);
+          await loadData();
+        } else {
+          setCarregando(false);
+        }
+      } catch (e) {
+        console.error('checkSession error:', e);
         setCarregando(false);
       }
     };
     checkSession();
+
+    // Safety timeout: se carregando nao resolver em 12s, forcar fim
+    const safetyTimeout = setTimeout(() => {
+      setCarregando(prev => {
+        if (prev) console.warn('Safety timeout: forcando fim do carregamento');
+        return false;
+      });
+    }, 12000);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session) {
@@ -361,10 +387,14 @@ export default function TabocaGestao() {
       } else if (event === 'SIGNED_OUT') {
         setAutenticado(false);
         setData(null);
+        setCarregando(false);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(safetyTimeout);
+      subscription.unsubscribe();
+    };
   }, [loadData]);
 
   // ═══════════════════════════════════════════════════
