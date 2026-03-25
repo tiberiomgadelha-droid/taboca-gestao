@@ -1,165 +1,208 @@
 // ============================================================
 // VoiceInputButton — Componente de entrada por voz
-// Usa Web Speech API (nativa do navegador, 100% gratuita)
-// Compatível com Chrome, Edge e Safari (requer HTTPS ou localhost)
+// Usa MediaRecorder (gravação local) + Groq Whisper (transcrição server-side)
+// Funciona em TODOS os navegadores modernos com HTTPS
 // ============================================================
 import { useState, useRef, useEffect, useCallback } from "react";
 
-const VoiceInputButton = ({ onTranscript, lang = 'pt-BR', size = 'md', className = '' }) => {
-  const [isListening, setIsListening] = useState(false);
-  const [interimText, setInterimText] = useState('');
-  const [status, setStatus] = useState('idle'); // idle | starting | listening | error
-  const [errorMsg, setErrorMsg] = useState('');
-  const recognitionRef = useRef(null);
-  const statusTimeoutRef = useRef(null);
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-  // Detectar suporte à API
-  const SpeechRecognitionAPI = typeof window !== 'undefined'
-    ? (window.SpeechRecognition || window.webkitSpeechRecognition)
-    : null;
+const VoiceInputButton = ({ onTranscript, lang = 'pt-BR', size = 'md', className = '' }) => {
+  const [status, setStatus] = useState('idle'); // idle | recording | transcribing | error
+  const [errorMsg, setErrorMsg] = useState('');
+  const [seconds, setSeconds] = useState(0);
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const streamRef = useRef(null);
+  const timerRef = useRef(null);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (recognitionRef.current) {
-        try { recognitionRef.current.abort(); } catch(e) {}
-      }
-      if (statusTimeoutRef.current) clearTimeout(statusTimeoutRef.current);
+      stopRecording(true);
+      if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
 
   // Auto-limpar mensagem de erro
   useEffect(() => {
     if (errorMsg) {
-      const t = setTimeout(() => setErrorMsg(''), 5000);
+      const t = setTimeout(() => setErrorMsg(''), 6000);
       return () => clearTimeout(t);
     }
   }, [errorMsg]);
 
-  const startListening = useCallback(() => {
-    if (!SpeechRecognitionAPI) {
-      setErrorMsg('Navegador não suporta reconhecimento de voz. Use Chrome ou Edge.');
-      setStatus('error');
-      return;
+  // Timer de gravação
+  useEffect(() => {
+    if (status === 'recording') {
+      setSeconds(0);
+      timerRef.current = setInterval(() => setSeconds(s => s + 1), 1000);
+      return () => clearInterval(timerRef.current);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
     }
+  }, [status]);
 
-    // Verificar se estamos em contexto seguro (HTTPS ou localhost)
-    const isSecure = window.isSecureContext;
-    if (!isSecure) {
-      setErrorMsg('Reconhecimento de voz requer HTTPS. Acesse via https:// ou use Chrome com localhost.');
-      setStatus('error');
-      return;
-    }
-
-    setStatus('starting');
+  const startRecording = useCallback(async () => {
     setErrorMsg('');
 
+    // Verificar suporte a MediaRecorder
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setErrorMsg('Navegador não suporta gravação de áudio.');
+      setStatus('error');
+      return;
+    }
+
     try {
-      const recognition = new SpeechRecognitionAPI();
+      // Solicitar acesso ao microfone
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
 
-      recognition.lang = lang;
-      recognition.interimResults = true;
-      recognition.maxAlternatives = 1;
-      recognition.continuous = true;
+      // Escolher formato suportado
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : MediaRecorder.isTypeSupported('audio/mp4')
+            ? 'audio/mp4'
+            : '';
 
-      recognition.onstart = () => {
-        console.log('🎙️ Reconhecimento de voz iniciado');
-        setIsListening(true);
-        setStatus('listening');
-        setInterimText('');
-      };
+      const options = mimeType ? { mimeType } : {};
+      const recorder = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = recorder;
+      chunksRef.current = [];
 
-      recognition.onend = () => {
-        console.log('🎙️ Reconhecimento de voz finalizado');
-        setIsListening(false);
-        setStatus('idle');
-        setInterimText('');
-      };
-
-      recognition.onerror = (e) => {
-        console.error('🎙️ Erro no reconhecimento:', e.error, e);
-        setIsListening(false);
-        setInterimText('');
-
-        switch (e.error) {
-          case 'not-allowed':
-          case 'permission-denied':
-            setErrorMsg('Permissão de microfone negada. Clique no ícone de cadeado na barra de endereços e permita o microfone.');
-            setStatus('error');
-            break;
-          case 'no-speech':
-            setErrorMsg('Nenhuma fala detectada. Tente novamente.');
-            setStatus('idle');
-            break;
-          case 'audio-capture':
-            setErrorMsg('Nenhum microfone encontrado. Conecte um microfone e tente novamente.');
-            setStatus('error');
-            break;
-          case 'network':
-            setErrorMsg('Erro de rede. Verifique sua conexão com a internet.');
-            setStatus('error');
-            break;
-          case 'service-not-allowed':
-            setErrorMsg('Serviço de voz não disponível. Verifique se está usando HTTPS.');
-            setStatus('error');
-            break;
-          case 'aborted':
-            setStatus('idle');
-            break;
-          default:
-            setErrorMsg(`Erro: ${e.error}. Tente novamente.`);
-            setStatus('error');
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunksRef.current.push(e.data);
         }
       };
 
-      recognition.onresult = (e) => {
-        let interim = '';
-        let finalText = '';
+      recorder.onstop = async () => {
+        // Parar todas as tracks do stream
+        stream.getTracks().forEach(t => t.stop());
 
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          const transcript = e.results[i][0].transcript;
-          if (e.results[i].isFinal) {
-            finalText += transcript;
-          } else {
-            interim += transcript;
-          }
+        if (chunksRef.current.length === 0) {
+          setStatus('idle');
+          return;
         }
 
-        if (finalText) {
-          console.log('🎙️ Texto reconhecido:', finalText);
-          onTranscript(finalText);
-          setInterimText('');
-        } else {
-          setInterimText(interim);
+        const audioBlob = new Blob(chunksRef.current, { type: mimeType || 'audio/webm' });
+        console.log(`🎙️ Gravação finalizada: ${audioBlob.size} bytes`);
+
+        if (audioBlob.size < 1000) {
+          setErrorMsg('Gravação muito curta. Tente novamente.');
+          setStatus('idle');
+          return;
         }
+
+        // Enviar para transcrição
+        await transcribeAudio(audioBlob, mimeType || 'audio/webm');
       };
 
-      recognitionRef.current = recognition;
-      recognition.start();
-      console.log('🎙️ recognition.start() chamado');
+      recorder.onerror = (e) => {
+        console.error('Erro no MediaRecorder:', e);
+        setErrorMsg('Erro durante gravação.');
+        setStatus('error');
+        stream.getTracks().forEach(t => t.stop());
+      };
+
+      recorder.start(500); // Capturar chunks a cada 500ms
+      setStatus('recording');
+      console.log('🎙️ Gravação iniciada');
 
     } catch (err) {
-      console.error('🎙️ Exceção ao iniciar reconhecimento:', err);
-      setErrorMsg(`Erro ao iniciar: ${err.message}`);
-      setStatus('error');
-      setIsListening(false);
-    }
-  }, [SpeechRecognitionAPI, lang, onTranscript]);
-
-  const stopListening = useCallback(() => {
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch(e) {
-        console.error('Erro ao parar reconhecimento:', e);
+      console.error('Erro ao acessar microfone:', err);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setErrorMsg('Permissão de microfone negada. Clique no cadeado na barra de endereços.');
+      } else if (err.name === 'NotFoundError') {
+        setErrorMsg('Nenhum microfone encontrado. Conecte um microfone.');
+      } else {
+        setErrorMsg(`Erro: ${err.message}`);
       }
+      setStatus('error');
     }
-    setIsListening(false);
-    setStatus('idle');
-    setInterimText('');
   }, []);
 
-  // Se o navegador nem suporta, mostrar botão desabilitado com explicação
+  const stopRecording = useCallback((silent = false) => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (e) {}
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    if (silent) {
+      setStatus('idle');
+    }
+  }, []);
+
+  const transcribeAudio = useCallback(async (audioBlob, mimeType) => {
+    setStatus('transcribing');
+
+    try {
+      // Converter blob para base64
+      const reader = new FileReader();
+      const base64 = await new Promise((resolve, reject) => {
+        reader.onloadend = () => {
+          const base64data = reader.result.split(',')[1];
+          resolve(base64data);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(audioBlob);
+      });
+
+      const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-audio`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          audio: base64,
+          mimeType: mimeType,
+          fileName: `recording.${ext}`,
+        }),
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Erro ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.text && data.text.trim()) {
+        console.log('🎙️ Transcrição recebida:', data.text);
+        onTranscript(data.text.trim());
+        setStatus('idle');
+      } else {
+        setErrorMsg('Nenhuma fala detectada. Tente novamente.');
+        setStatus('idle');
+      }
+    } catch (err) {
+      console.error('Erro na transcrição:', err);
+      setErrorMsg(`Erro na transcrição: ${err.message}`);
+      setStatus('error');
+      // Auto-recover
+      setTimeout(() => setStatus('idle'), 3000);
+    }
+  }, [onTranscript]);
+
+  const handleClick = useCallback(() => {
+    if (status === 'recording') {
+      stopRecording();
+    } else if (status === 'idle' || status === 'error') {
+      startRecording();
+    }
+    // Se está transcrevendo, ignora clique
+  }, [status, startRecording, stopRecording]);
+
   const sizes = {
     sm: { btn: 30, icon: 13, font: 10 },
     md: { btn: 38, icon: 15, font: 11 },
@@ -167,63 +210,46 @@ const VoiceInputButton = ({ onTranscript, lang = 'pt-BR', size = 'md', className
   };
   const s = sizes[size] || sizes.md;
 
-  const isActive = isListening || status === 'listening';
-  const isStarting = status === 'starting';
-  const hasError = status === 'error';
+  const isRecording = status === 'recording';
+  const isTranscribing = status === 'transcribing';
 
-  // Cor do botão baseada no estado
   const getBtnStyle = () => {
-    if (isActive) return {
-      border: '2px solid #EF4444',
-      background: '#FEE2E2',
-      color: '#EF4444',
-    };
-    if (isStarting) return {
-      border: '2px solid #F59E0B',
-      background: '#FEF3C7',
-      color: '#F59E0B',
-    };
-    if (hasError) return {
-      border: '1px solid #EF4444',
-      background: '#FEF2F2',
-      color: '#EF4444',
-    };
-    return {
-      border: '1px solid #E5E7EB',
-      background: '#F9FAFB',
-      color: '#6B7280',
-    };
+    if (isRecording) return { border: '2px solid #EF4444', background: '#FEE2E2', color: '#EF4444' };
+    if (isTranscribing) return { border: '2px solid #F59E0B', background: '#FEF3C7', color: '#F59E0B' };
+    if (errorMsg) return { border: '1px solid #EF4444', background: '#FEF2F2', color: '#EF4444' };
+    return { border: '1px solid #E5E7EB', background: '#F9FAFB', color: '#6B7280' };
   };
 
-  const btnStyle = getBtnStyle();
+  const formatTime = (secs) => {
+    const m = Math.floor(secs / 60);
+    const ss = secs % 60;
+    return `${m}:${ss.toString().padStart(2, '0')}`;
+  };
 
   return (
     <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }} className={className}>
       <button
         type="button"
-        onClick={isActive ? stopListening : startListening}
-        disabled={isStarting}
+        onClick={handleClick}
+        disabled={isTranscribing}
         title={
-          !SpeechRecognitionAPI ? 'Navegador não suporta voz (use Chrome/Edge)' :
-          isActive ? 'Parar gravação' :
-          isStarting ? 'Iniciando...' :
-          'Falar por voz'
+          isRecording ? 'Parar gravação' :
+          isTranscribing ? 'Transcrevendo...' :
+          'Gravar áudio por voz'
         }
         style={{
           width: s.btn,
           height: s.btn,
           borderRadius: '50%',
-          ...btnStyle,
-          cursor: isStarting ? 'wait' : 'pointer',
+          ...getBtnStyle(),
+          cursor: isTranscribing ? 'wait' : 'pointer',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           transition: 'all 0.2s ease',
-          animation: isActive ? 'voicePulse 1.5s ease-in-out infinite' : 'none',
+          animation: isRecording ? 'voicePulse 1.5s ease-in-out infinite' : 'none',
           flexShrink: 0,
           outline: 'none',
-          position: 'relative',
-          opacity: !SpeechRecognitionAPI ? 0.4 : 1,
         }}
       >
         <svg
@@ -237,8 +263,14 @@ const VoiceInputButton = ({ onTranscript, lang = 'pt-BR', size = 'md', className
           strokeLinecap="round"
           strokeLinejoin="round"
         >
-          {isActive ? (
+          {isRecording ? (
             <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none" />
+          ) : isTranscribing ? (
+            <>
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none" strokeDasharray="20 10" >
+                <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite"/>
+              </circle>
+            </>
           ) : (
             <>
               <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
@@ -249,42 +281,22 @@ const VoiceInputButton = ({ onTranscript, lang = 'pt-BR', size = 'md', className
         </svg>
       </button>
 
-      {/* Tooltip de status/interim/erro */}
-      {(isActive && interimText) || isStarting || errorMsg ? (
+      {/* Tooltip */}
+      {(isRecording || isTranscribing || errorMsg) && (
         <div style={{
           position: 'absolute',
           bottom: '100%',
           left: '50%',
           transform: 'translateX(-50%)',
-          background: errorMsg ? '#991B1B' : isStarting ? '#92400E' : '#1F2937',
-          color: '#fff',
-          borderRadius: 8,
-          padding: '6px 12px',
-          fontSize: s.font,
-          whiteSpace: 'nowrap',
-          maxWidth: 280,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          marginBottom: 6,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-          zIndex: 1000,
-        }}>
-          {errorMsg || (isStarting ? 'Solicitando microfone...' : `${interimText}...`)}
-        </div>
-      ) : null}
-
-      {/* Indicador de escuta ativo */}
-      {isActive && !interimText && (
-        <div style={{
-          position: 'absolute',
-          bottom: '100%',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: '#DC2626',
+          background: errorMsg ? '#991B1B' : isRecording ? '#DC2626' : '#92400E',
           color: '#fff',
           borderRadius: 8,
           padding: '4px 10px',
           fontSize: s.font,
+          whiteSpace: 'nowrap',
+          maxWidth: 300,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
           marginBottom: 6,
           boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
           zIndex: 1000,
@@ -292,12 +304,16 @@ const VoiceInputButton = ({ onTranscript, lang = 'pt-BR', size = 'md', className
           alignItems: 'center',
           gap: 4,
         }}>
-          <span style={{
-            width: 6, height: 6, borderRadius: '50%',
-            background: '#fff',
-            animation: 'voicePulse 1s ease-in-out infinite',
-          }}/>
-          Ouvindo...
+          {errorMsg ? errorMsg :
+           isRecording ? (
+            <>
+              <span style={{
+                width: 6, height: 6, borderRadius: '50%', background: '#fff',
+                animation: 'voicePulse 1s ease-in-out infinite',
+              }}/>
+              {`Gravando ${formatTime(seconds)}... clique para parar`}
+            </>
+          ) : 'Transcrevendo...'}
         </div>
       )}
 
