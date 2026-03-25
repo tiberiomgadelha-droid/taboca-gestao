@@ -4,7 +4,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const INSTAGRAM_ACCESS_TOKEN = Deno.env.get("INSTAGRAM_ACCESS_TOKEN") ?? "";
+const INSTAGRAM_ACCESS_TOKEN = Deno.env.get("INSTAGRAM_API_TOKEN") ?? Deno.env.get("INSTAGRAM_ACCESS_TOKEN") ?? "";
 const INSTAGRAM_PAGE_ID = Deno.env.get("INSTAGRAM_PAGE_ID") ?? "";
 
 const corsHeaders = {
@@ -33,9 +33,23 @@ serve(async (req: Request) => {
     }
 
     // Enviar via Instagram Messaging API (Graph API)
-    // Endpoint correto para Instagram Direct Messages:
-    // https://graph.instagram.com/v21.0/me/messages
-    const url = `https://graph.instagram.com/v21.0/me/messages`;
+    // Endpoint correto: graph.facebook.com com PAGE_ID (NÃO graph.instagram.com/me/messages)
+    // A Instagram Messaging API opera via Messenger Platform no Facebook Graph API
+    if (!INSTAGRAM_ACCESS_TOKEN) {
+      console.error("⚠️ INSTAGRAM_API_TOKEN/INSTAGRAM_ACCESS_TOKEN não configurado!");
+      return new Response(
+        JSON.stringify({ error: "INSTAGRAM_API_TOKEN não configurado no Supabase. Configure o secret antes de enviar mensagens." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    if (!INSTAGRAM_PAGE_ID) {
+      console.error("⚠️ INSTAGRAM_PAGE_ID não configurado!");
+      return new Response(
+        JSON.stringify({ error: "INSTAGRAM_PAGE_ID não configurado no Supabase." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const url = `https://graph.facebook.com/v21.0/${INSTAGRAM_PAGE_ID}/messages`;
     const body = {
       recipient: { id: recipient_id },
       message: { text: message },

@@ -5,6 +5,7 @@ import { supabase, sbInsert, sbUpdate, sbDelete, sbUpsertSettings } from "../uti
 import { fmtCurrency, fmtDate, fmtDateTime, daysUntil, isLowStock, isExpiringSoon, NOW } from "../utils/helpers.js";
 import { sbFetchOlderMessages } from "../utils/dataLoader.js";
 import { C, s, Btn, Badge, Modal, FormField, Input, Select, Textarea, Divider, ImageUpload, processarImagem, logActivity, useIsMobile } from "../components/ui.jsx";
+import VoiceInputButton from "../components/VoiceInputButton.jsx";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -291,7 +292,12 @@ const PanelAtendimento = ({data, setData, isMobile}) => {
               {aiLoading ? <Loader size={13} style={{animation:'pulse 1s infinite'}}/> : <Bot size={13}/>}
               <span style={{fontSize:11}}>IA</span>
             </button>
-            <input value={msgInput} onChange={e=>setMsgInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();enviarMensagem();}}} placeholder="Digite uma mensagem..." style={{...s.input,flex:1}}/>
+            <VoiceInputButton
+              onTranscript={(text) => setMsgInput(prev => prev ? prev + ' ' + text : text)}
+              lang="pt-BR"
+              size="sm"
+            />
+            <input value={msgInput} onChange={e=>setMsgInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();enviarMensagem();}}} placeholder="Digite ou fale uma mensagem..." style={{...s.input,flex:1}}/>
             <Btn onClick={()=>enviarMensagem()} disabled={!msgInput.trim()||sendingMsg} style={{height:38}}>
               {sendingMsg ? <Loader size={14} style={{animation:'spin 1s linear infinite'}}/> : <Send size={14}/>}
               {sendingMsg ? 'Enviando...' : 'Enviar'}

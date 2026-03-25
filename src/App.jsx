@@ -372,10 +372,10 @@ export default function TabocaGestao() {
     };
     checkSession();
 
-    // Safety timeout: se carregando nao resolver em 12s, forcar fim
+    // Timeout de segurança: se carregando não resolver em 12s, forçar fim
     const safetyTimeout = setTimeout(() => {
       setCarregando(prev => {
-        if (prev) console.warn('Safety timeout: forcando fim do carregamento');
+        if (prev) console.warn('Safety timeout: forçando fim do carregamento');
         return false;
       });
     }, 12000);

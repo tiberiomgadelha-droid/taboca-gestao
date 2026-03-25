@@ -5,6 +5,7 @@ import { supabase, sbInsert, sbUpdate, sbDelete, sbUpsertSettings } from "../uti
 import { fmtCurrency, fmtDate, fmtDateTime, daysUntil, isLowStock, isExpiringSoon, NOW } from "../utils/helpers.js";
 import { sbFetchOlderMessages } from "../utils/dataLoader.js";
 import { C, s, Btn, Badge, Modal, FormField, Input, Select, Textarea, Divider, ImageUpload, processarImagem, logActivity, useIsMobile } from "../components/ui.jsx";
+import VoiceInputButton from "../components/VoiceInputButton.jsx";
 
 const PanelAssistente = ({data, setData, settings, isMobile}) => {
   const [msgs, setMsgs] = useState(()=>{
@@ -108,6 +109,11 @@ const PanelAssistente = ({data, setData, settings, isMobile}) => {
         <div ref={endRef}/>
       </div>
       <div style={{background:'#fff',borderTop:`1px solid ${C.border}`,padding:isMobile?'10px 16px':'14px 28px',display:'flex',gap:10,alignItems:'flex-end'}}>
+        <VoiceInputButton
+          onTranscript={(text) => setInput(prev => prev ? prev + ' ' + text : text)}
+          lang="pt-BR"
+          size="md"
+        />
         <textarea value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg();}}} placeholder="Pergunte sobre o negócio, peça relatórios, cadastre dados..." style={{...s.input,flex:1,resize:'none',minHeight:44,maxHeight:120}} rows={2}/>
         <Btn onClick={()=>sendMsg()} disabled={loading||!input.trim()} style={{height:44,paddingInline:16}}><Send size={15}/></Btn>
       </div>
