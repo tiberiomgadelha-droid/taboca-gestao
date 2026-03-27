@@ -109,23 +109,27 @@ serve(async (req) => {
 
     const supabase = getSupabaseAdmin();
 
-    // Buscar dados necessários em paralelo
+    // Buscar dados necessários em paralelo (inclui fichas técnicas e todos os produtos)
     const [
       { data: settings },
       { data: cliente },
       { data: produtos },
+      { data: todosProdutos },
       { data: fornadas },
       { data: localidades },
       { data: grupos },
       { data: pedidosCliente },
+      { data: fichas },
     ] = await Promise.all([
       supabase.from('settings').select('prompt_agente2').eq('id', 1).single(),
       cliente_id ? supabase.from('clientes').select('*').eq('id', cliente_id).single() : Promise.resolve({ data: null }),
       supabase.from('produtos').select('*').gt('quantidade', 0).order('categoria'),
+      supabase.from('produtos').select('id, nome, categoria, quantidade, valor_unitario, emoji, descricao').order('categoria'),
       supabase.from('fornadas').select('*').gte('data', new Date().toISOString().slice(0, 10)).order('data'),
       supabase.from('localidades').select('*'),
       supabase.from('grupos').select('*'),
       cliente_id ? supabase.from('pedidos').select('*').eq('cliente_id', cliente_id).order('data_pedido', { ascending: false }).limit(10) : Promise.resolve({ data: [] }),
+      supabase.from('fichas').select('*, produtos(nome, categoria, emoji)').order('produto_id'),
     ]);
 
     const promptBase = settings?.prompt_agente2 || 'Você é o atendente virtual da Taboca Pão e Pizza.';
@@ -159,7 +163,20 @@ PRÓXIMAS FORNADAS:
 ${fornadas?.map((f: any) => `- ${f.data} (${f.tipo}) — ${f.hora_inicio} a ${f.hora_fim} — Encomendas até: ${f.encerramento_encomenda || 'N/A'}`).join('\n') || 'Nenhuma fornada programada.'}
 
 LOCALIDADES E FRETES:
-${localidades?.map((l: any) => `- ${l.nome_localidade}: R$ ${Number(l.valor_entrega).toFixed(2)} (${l.tempo_estimado || 'N/A'})`).join('\n') || 'Nenhuma localidade cadastrada.'}
+${localidades?.map((l: any) => `- ${l.nome_localidade} (ID: ${l.id}): R$ ${Number(l.valor_entrega).toFixed(2)} (${l.tempo_estimado || 'N/A'})`).join('\n') || 'Nenhuma localidade cadastrada.'}
+
+FICHAS TÉCNICAS E MODO DE PREPARO:
+${fichas?.map((f: any) => {
+  const prod = f.produtos;
+  return \`${prod?.emoji || '📋'} ${prod?.nome || 'Produto'} (${prod?.categoria || ''})
+  - Ingredientes: ${f.ingredientes ? JSON.stringify(f.ingredientes) : 'N/A'}
+  - Modo de preparo: ${f.modo_preparo || 'N/A'}
+  - Rendimento: ${f.rendimento || 'N/A'} unidades | Tempo: ${f.tempo_preparo || 'N/A'} min
+  - Custo material: R$ ${f.custo_material ? Number(f.custo_material).toFixed(2) : 'N/A'} | Preço venda: R$ ${f.valor_venda_unitario ? Number(f.valor_venda_unitario).toFixed(2) : 'N/A'}\`;
+}).join('\n') || 'Nenhuma ficha técnica cadastrada.'}
+
+TODOS OS PRODUTOS (incluindo estoque zero — para encomenda):
+${todosProdutos?.map((p: any) => \`- ID:${p.id} ${p.emoji || '🍞'} ${p.nome} (${p.categoria}) — R$ ${Number(p.valor_unitario).toFixed(2)} — Estoque: ${p.quantidade}\`).join('\n') || 'Nenhum produto.'}
 
 CANAL DE ATENDIMENTO: ${canal || 'whatsapp'}
 
@@ -173,17 +190,159 @@ ABORDAGEM POR GRUPO:
 INSTRUÇÕES DE RESPOSTA:
 - Seja breve e amigável (estilo WhatsApp)
 - Use emojis moderadamente
-- Quando o cliente confirmar um pedido, retorne a ação em formato JSON dentro de um bloco \`\`\`action
-- Ações possíveis: criar_pedido, atualizar_cliente, encaminhar_tiba
+- IMPORTANTE: Você DEVE registrar dados no sistema sempre que o cliente fornecer informações relevantes
+- Sempre coletar dados que faltam do cliente de forma natural durante a conversa (endereço, preferências)
+- Use as fichas técnicas para responder dúvidas sobre ingredientes, modo de preparo e detalhes dos produtos
 
-FORMATO DE AÇÃO (quando aplicável):
+QUANDO CRIAR AÇÕES (obrigatório):
+1. Cliente confirmou um pedido → criar_pedido (com em_estoque baseado na quantidade do produto)
+2. Cliente informou endereço, nome, preferência ou qualquer dado pessoal → atualizar_cliente
+3. Cliente confirmou pagamento → confirmar_pagamento (registra transação E marca pedido como pago)
+4. Cliente quer cancelar/alterar pedido → editar_pedido ou encaminhar_tiba
+5. Situação complexa que precisa do Tiba → encaminhar_tiba
+
+REGRAS DE ESTOQUE E STATUS:
+- Produto com quantidade > 0 no cardápio: em_estoque = true → pedido com status_producao="pronto", status_entrega="pendente"
+- Produto com quantidade = 0 (sob encomenda): em_estoque = false → pedido com status_producao="pendente", status_entrega="pendente"
+- Informar ao cliente: "Temos em estoque, já separo pra você!" ou "Esse é por encomenda, preciso saber a data de entrega"
+
+AÇÕES DISPONÍVEIS (retorne em bloco \`\`\`action):
+
+1. criar_pedido — Criar novo pedido
 \`\`\`action
 {
-  "type": "criar_pedido|atualizar_cliente|encaminhar_tiba",
-  "data": { campos_relevantes },
-  "description": "Descrição da ação"
+  "type": "criar_pedido",
+  "data": {
+    "cliente_id": ${cliente_id},
+    "data_entrega": "YYYY-MM-DD",
+    "itens": [{"produto_id": 1, "nome": "Nome", "quantidade": 2, "valor_unitario": 18.00}],
+    "valor_total": 36.00,
+    "localidade_id": null,
+    "observacoes": "texto opcional",
+    "em_estoque": true
+  },
+  "description": "Descrição do pedido"
 }
-\`\`\``;
+\`\`\`
+
+2. editar_pedido — Alterar pedido existente
+\`\`\`action
+{
+  "type": "editar_pedido",
+  "data": { "pedido_id": 123, "campos": {"status_producao": "pronto", "status_entrega": "em_rota", "observacoes": "texto"} },
+  "description": "Motivo da alteração"
+}
+\`\`\`
+
+3. apagar_pedido — Cancelar pedido
+\`\`\`action
+{ "type": "apagar_pedido", "data": { "pedido_id": 123 }, "description": "Motivo" }
+\`\`\`
+
+4. atualizar_cliente — Atualizar dados do cliente atual
+\`\`\`action
+{
+  "type": "atualizar_cliente",
+  "data": { "cliente_id": ${cliente_id}, "campos": {"nome": "Nome", "endereco_completo": "Rua X, 123", "localidade_id": 1, "preferencias": "texto", "grupo_id": 2} },
+  "description": "Dados atualizados"
+}
+\`\`\`
+
+5. criar_cliente — Cadastrar novo cliente mencionado na conversa
+\`\`\`action
+{
+  "type": "criar_cliente",
+  "data": { "nome": "Nome", "whatsapp": "71999999999", "instagram": "@handle", "endereco_completo": "Rua X", "localidade_id": 1 },
+  "description": "Novo cliente"
+}
+\`\`\`
+
+6. apagar_cliente
+\`\`\`action
+{ "type": "apagar_cliente", "data": { "cliente_id": 123 }, "description": "Motivo" }
+\`\`\`
+
+7. confirmar_pagamento — Registra pagamento (cria transação + marca pedido como pago)
+\`\`\`action
+{
+  "type": "confirmar_pagamento",
+  "data": { "pedido_id": 123, "valor": 36.00, "conta": "Pix", "categoria": "Vendas" },
+  "description": "Pagamento via Pix confirmado"
+}
+\`\`\`
+
+8. criar_transacao — Registrar transação financeira avulsa
+\`\`\`action
+{
+  "type": "criar_transacao",
+  "data": { "descricao": "Descrição", "data": "YYYY-MM-DD", "tipo": "receita", "valor": 50.00, "categoria": "Vendas", "conta": "Pix" },
+  "description": "Transação registrada"
+}
+\`\`\`
+
+9. editar_transacao
+\`\`\`action
+{ "type": "editar_transacao", "data": { "transacao_id": 123, "campos": {"valor": 60.00} }, "description": "Motivo" }
+\`\`\`
+
+10. apagar_transacao
+\`\`\`action
+{ "type": "apagar_transacao", "data": { "transacao_id": 123 }, "description": "Motivo" }
+\`\`\`
+
+11. criar_rota — Criar rota de entrega
+\`\`\`action
+{
+  "type": "criar_rota",
+  "data": { "nome_rota": "Nome", "data": "YYYY-MM-DD", "lista_pedido_ids": [1,2,3], "entregador": "Nome" },
+  "description": "Nova rota"
+}
+\`\`\`
+
+12. editar_rota
+\`\`\`action
+{ "type": "editar_rota", "data": { "rota_id": 123, "campos": {"status_rota": "concluida", "lista_pedido_ids": [1,2]} }, "description": "Motivo" }
+\`\`\`
+
+13. apagar_rota
+\`\`\`action
+{ "type": "apagar_rota", "data": { "rota_id": 123 }, "description": "Motivo" }
+\`\`\`
+
+14. criar_localidade
+\`\`\`action
+{
+  "type": "criar_localidade",
+  "data": { "nome_localidade": "Nome", "valor_entrega": 10.00, "tempo_estimado": "30min" },
+  "description": "Nova localidade"
+}
+\`\`\`
+
+15. editar_localidade
+\`\`\`action
+{ "type": "editar_localidade", "data": { "localidade_id": 123, "campos": {"valor_entrega": 12.00} }, "description": "Motivo" }
+\`\`\`
+
+16. apagar_localidade
+\`\`\`action
+{ "type": "apagar_localidade", "data": { "localidade_id": 123 }, "description": "Motivo" }
+\`\`\`
+
+17. encaminhar_tiba — Escalar para atendimento humano
+\`\`\`action
+{
+  "type": "encaminhar_tiba",
+  "data": { "motivo": "Descrição do motivo", "resumo_conversa": "Resumo do que foi tratado" },
+  "description": "Encaminhamento"
+}
+\`\`\`
+
+REGRAS CRÍTICAS:
+- Você pode emitir MÚLTIPLAS ações na mesma resposta (ex: atualizar_cliente + criar_pedido)
+- Sempre use o cliente_id ${cliente_id} para ações do cliente atual
+- Para confirmar_pagamento, pergunte a forma: Pix, Dinheiro ou Cartão
+- Nunca apague registros sem o cliente pedir explicitamente
+- Se não tem certeza, use encaminhar_tiba`;
 
     // Montar mensagens
     const messages = [

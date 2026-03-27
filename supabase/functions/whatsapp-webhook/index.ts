@@ -361,9 +361,10 @@ async function saveMensagem(supabase: any, opts: {
   return data;
 }
 
-// ── Chamar agent-atendente (IA) ──
-async function callAgentAtendente(clienteId: number, mensagem: string, canal: string, history: any[] = []): Promise<string> {
+// ── Chamar agent-atendente (IA) — retorna resposta E ações ──
+async function callAgentAtendente(clienteId: number, mensagem: string, canal: string, history: any[] = []): Promise<{ resposta: string; acoes: any[] }> {
   const url = `${SUPABASE_URL}/functions/v1/agent-atendente`;
+  const fallbackMsg = "Olá! Obrigado por entrar em contato com a Taboca Pão e Pizza 🍞🍕 Estamos com uma dificuldade técnica no momento, mas logo retornaremos. Tente novamente em alguns minutos!";
 
   try {
     const response = await fetch(url, {
@@ -383,14 +384,263 @@ async function callAgentAtendente(clienteId: number, mensagem: string, canal: st
     if (!response.ok) {
       const errText = await response.text();
       console.error(`Erro no agent-atendente: ${response.status} - ${errText}`);
-      return "Olá! Obrigado por entrar em contato com a Taboca Pão e Pizza 🍞🍕 Estamos com uma dificuldade técnica no momento, mas logo retornaremos. Tente novamente em alguns minutos!";
+      return { resposta: fallbackMsg, acoes: [] };
     }
 
     const data = await response.json();
-    return data.resposta || data.reply || "Desculpe, não consegui processar sua mensagem.";
+    return {
+      resposta: data.resposta || data.reply || "Desculpe, não consegui processar sua mensagem.",
+      acoes: data.acoes || [],
+    };
   } catch (error) {
     console.error("Erro ao chamar agent-atendente:", error);
-    return "Olá! Obrigado por entrar em contato com a Taboca Pão e Pizza 🍞🍕 Estamos com uma dificuldade técnica no momento. Tente novamente em breve!";
+    return { resposta: fallbackMsg, acoes: [] };
+  }
+}
+
+// ════════════════════════════════════════════════════
+// FASE 6: Executar ações retornadas pela IA no banco
+// ════════════════════════════════════════════════════
+async function executeAcoes(supabase: any, acoes: any[], clienteId: number): Promise<void> {
+  for (const acao of acoes) {
+    try {
+      const { type, data: d, description } = acao;
+      console.log(`⚡ Executando ação: ${type} — ${description || ''}`);
+
+      switch (type) {
+        // ── PEDIDOS ──
+        case 'criar_pedido': {
+          const emEstoque = d.em_estoque === true;
+          const { data: pedido, error } = await supabase.from('pedidos').insert({
+            cliente_id: d.cliente_id || clienteId,
+            data_pedido: new Date().toISOString().split('T')[0],
+            data_entrega: d.data_entrega || null,
+            itens: d.itens || [],
+            valor_total: d.valor_total || 0,
+            localidade_id: d.localidade_id || null,
+            observacoes: d.observacoes || null,
+            status_producao: emEstoque ? 'pronto' : 'pendente',
+            status_entrega: 'pendente',
+            pagamento_confirmado: false,
+          }).select('id').single();
+
+          if (error) {
+            console.error('Erro criar_pedido:', error);
+          } else {
+            console.log(`✅ Pedido #${pedido.id} criado (produção: ${emEstoque ? 'pronto' : 'pendente'})`);
+            // Decrementar estoque se em_estoque
+            if (emEstoque && d.itens) {
+              for (const item of d.itens) {
+                if (item.produto_id && item.quantidade) {
+                  await supabase.rpc('decrement_estoque', undefined).then(() => {});
+                  // Fallback: update direto
+                  const { data: prod } = await supabase.from('produtos').select('quantidade').eq('id', item.produto_id).single();
+                  if (prod) {
+                    const novaQtd = Math.max(0, (prod.quantidade || 0) - item.quantidade);
+                    await supabase.from('produtos').update({ quantidade: novaQtd }).eq('id', item.produto_id);
+                    console.log(`📦 Estoque produto ${item.produto_id}: ${prod.quantidade} → ${novaQtd}`);
+                  }
+                }
+              }
+            }
+            // Registrar no activity_log
+            await supabase.from('activity_log').insert({
+              tipo: 'pedido', descricao: `Pedido #${pedido.id} criado via atendente IA: ${description || ''}`,
+              data: new Date().toISOString(), operador: 'Atendente IA', icon: '📋'
+            });
+          }
+          break;
+        }
+
+        case 'editar_pedido': {
+          if (!d.pedido_id) { console.error('editar_pedido sem pedido_id'); break; }
+          const campos = d.campos || d;
+          const { pedido_id, ...updateFields } = campos.pedido_id ? campos : { pedido_id: d.pedido_id, ...d.campos };
+          const { error } = await supabase.from('pedidos').update(d.campos || updateFields).eq('id', d.pedido_id);
+          if (error) console.error('Erro editar_pedido:', error);
+          else console.log(`✅ Pedido #${d.pedido_id} atualizado`);
+          break;
+        }
+
+        case 'apagar_pedido': {
+          if (!d.pedido_id) { console.error('apagar_pedido sem pedido_id'); break; }
+          const { error } = await supabase.from('pedidos').delete().eq('id', d.pedido_id);
+          if (error) console.error('Erro apagar_pedido:', error);
+          else console.log(`✅ Pedido #${d.pedido_id} removido`);
+          break;
+        }
+
+        // ── CLIENTES ──
+        case 'criar_cliente': {
+          const { data: novoCliente, error } = await supabase.from('clientes').insert({
+            nome: d.nome || 'Sem nome',
+            whatsapp: d.whatsapp || null,
+            instagram: d.instagram || null,
+            endereco_completo: d.endereco_completo || null,
+            localidade_id: d.localidade_id || null,
+            preferencias: d.preferencias || null,
+            data_cadastro: new Date().toISOString().split('T')[0],
+            bot_ativo: true,
+            preferencia_audio: false,
+          }).select('id').single();
+          if (error) console.error('Erro criar_cliente:', error);
+          else console.log(`✅ Cliente "${d.nome}" criado (ID: ${novoCliente.id})`);
+          break;
+        }
+
+        case 'atualizar_cliente': {
+          const cId = d.cliente_id || clienteId;
+          const campos = d.campos || {};
+          if (Object.keys(campos).length === 0) { console.log('atualizar_cliente sem campos'); break; }
+          const { error } = await supabase.from('clientes').update(campos).eq('id', cId);
+          if (error) console.error('Erro atualizar_cliente:', error);
+          else console.log(`✅ Cliente #${cId} atualizado: ${Object.keys(campos).join(', ')}`);
+          break;
+        }
+
+        case 'apagar_cliente': {
+          if (!d.cliente_id) { console.error('apagar_cliente sem cliente_id'); break; }
+          const { error } = await supabase.from('clientes').delete().eq('id', d.cliente_id);
+          if (error) console.error('Erro apagar_cliente:', error);
+          else console.log(`✅ Cliente #${d.cliente_id} removido`);
+          break;
+        }
+
+        // ── PAGAMENTO ──
+        case 'confirmar_pagamento': {
+          if (!d.pedido_id) { console.error('confirmar_pagamento sem pedido_id'); break; }
+          // 1. Marcar pedido como pago
+          const { error: errPedido } = await supabase.from('pedidos').update({ pagamento_confirmado: true }).eq('id', d.pedido_id);
+          if (errPedido) { console.error('Erro confirmar pagamento pedido:', errPedido); break; }
+          // 2. Criar transação de receita
+          const { error: errTx } = await supabase.from('transacoes').insert({
+            descricao: `Pagamento Pedido #${d.pedido_id}`,
+            data: new Date().toISOString().split('T')[0],
+            tipo: 'receita',
+            valor: d.valor || 0,
+            categoria: d.categoria || 'Vendas',
+            conta: d.conta || 'Pix',
+          });
+          if (errTx) console.error('Erro criar transação pagamento:', errTx);
+          else console.log(`✅ Pagamento pedido #${d.pedido_id}: R$ ${d.valor} via ${d.conta}`);
+          // 3. Log
+          await supabase.from('activity_log').insert({
+            tipo: 'financeiro', descricao: `Pagamento R$ ${d.valor} recebido (Pedido #${d.pedido_id}) via ${d.conta}`,
+            data: new Date().toISOString(), operador: 'Atendente IA', icon: '💰'
+          });
+          break;
+        }
+
+        // ── TRANSAÇÕES ──
+        case 'criar_transacao': {
+          const { error } = await supabase.from('transacoes').insert({
+            descricao: d.descricao || '',
+            data: d.data || new Date().toISOString().split('T')[0],
+            tipo: d.tipo || 'receita',
+            valor: d.valor || 0,
+            categoria: d.categoria || '',
+            conta: d.conta || '',
+          });
+          if (error) console.error('Erro criar_transacao:', error);
+          else console.log(`✅ Transação criada: ${d.descricao} R$ ${d.valor}`);
+          break;
+        }
+
+        case 'editar_transacao': {
+          if (!d.transacao_id) { console.error('editar_transacao sem transacao_id'); break; }
+          const { error } = await supabase.from('transacoes').update(d.campos || {}).eq('id', d.transacao_id);
+          if (error) console.error('Erro editar_transacao:', error);
+          else console.log(`✅ Transação #${d.transacao_id} atualizada`);
+          break;
+        }
+
+        case 'apagar_transacao': {
+          if (!d.transacao_id) { console.error('apagar_transacao sem transacao_id'); break; }
+          const { error } = await supabase.from('transacoes').delete().eq('id', d.transacao_id);
+          if (error) console.error('Erro apagar_transacao:', error);
+          else console.log(`✅ Transação #${d.transacao_id} removida`);
+          break;
+        }
+
+        // ── ROTAS ──
+        case 'criar_rota': {
+          const { error } = await supabase.from('rotas').insert({
+            nome_rota: d.nome_rota || '',
+            data: d.data || new Date().toISOString().split('T')[0],
+            lista_pedido_ids: d.lista_pedido_ids || [],
+            entregador: d.entregador || null,
+            status_rota: d.status_rota || 'pendente',
+          });
+          if (error) console.error('Erro criar_rota:', error);
+          else console.log(`✅ Rota "${d.nome_rota}" criada`);
+          break;
+        }
+
+        case 'editar_rota': {
+          if (!d.rota_id) { console.error('editar_rota sem rota_id'); break; }
+          const { error } = await supabase.from('rotas').update(d.campos || {}).eq('id', d.rota_id);
+          if (error) console.error('Erro editar_rota:', error);
+          else console.log(`✅ Rota #${d.rota_id} atualizada`);
+          break;
+        }
+
+        case 'apagar_rota': {
+          if (!d.rota_id) { console.error('apagar_rota sem rota_id'); break; }
+          const { error } = await supabase.from('rotas').delete().eq('id', d.rota_id);
+          if (error) console.error('Erro apagar_rota:', error);
+          else console.log(`✅ Rota #${d.rota_id} removida`);
+          break;
+        }
+
+        // ── LOCALIDADES ──
+        case 'criar_localidade': {
+          const { error } = await supabase.from('localidades').insert({
+            nome_localidade: d.nome_localidade || '',
+            valor_entrega: d.valor_entrega || 0,
+            tempo_estimado: d.tempo_estimado || null,
+            rota_descricao: d.rota_descricao || null,
+            link_rota_maps: d.link_rota_maps || null,
+          });
+          if (error) console.error('Erro criar_localidade:', error);
+          else console.log(`✅ Localidade "${d.nome_localidade}" criada`);
+          break;
+        }
+
+        case 'editar_localidade': {
+          if (!d.localidade_id) { console.error('editar_localidade sem localidade_id'); break; }
+          const { error } = await supabase.from('localidades').update(d.campos || {}).eq('id', d.localidade_id);
+          if (error) console.error('Erro editar_localidade:', error);
+          else console.log(`✅ Localidade #${d.localidade_id} atualizada`);
+          break;
+        }
+
+        case 'apagar_localidade': {
+          if (!d.localidade_id) { console.error('apagar_localidade sem localidade_id'); break; }
+          const { error } = await supabase.from('localidades').delete().eq('id', d.localidade_id);
+          if (error) console.error('Erro apagar_localidade:', error);
+          else console.log(`✅ Localidade #${d.localidade_id} removida`);
+          break;
+        }
+
+        // ── ENCAMINHAR TIBA ──
+        case 'encaminhar_tiba': {
+          await supabase.from('activity_log').insert({
+            tipo: 'atendimento',
+            descricao: `🔔 Encaminhamento para Tiba: ${d.motivo || ''} | Resumo: ${d.resumo_conversa || ''}`,
+            data: new Date().toISOString(),
+            operador: 'Atendente IA',
+            icon: '🔔'
+          });
+          console.log(`🔔 Encaminhado para Tiba: ${d.motivo}`);
+          break;
+        }
+
+        default:
+          console.log(`⚠️ Tipo de ação desconhecido: ${type}`);
+      }
+    } catch (err) {
+      console.error(`Erro ao executar ação ${acao?.type}:`, err);
+    }
   }
 }
 
@@ -548,8 +798,14 @@ serve(async (req: Request) => {
         content: m.conteudo,
       }));
 
-      // 7. Chamar IA (agent-atendente) para gerar resposta
-      const aiResponse = await callAgentAtendente(clienteId, conteudoTexto, 'whatsapp', history);
+      // 7. Chamar IA (agent-atendente) para gerar resposta E ações
+      const { resposta: aiResponse, acoes } = await callAgentAtendente(clienteId, conteudoTexto, 'whatsapp', history);
+
+      // 7.1 FASE 6: Executar ações retornadas pela IA (pedidos, clientes, transações, etc.)
+      if (acoes && acoes.length > 0) {
+        console.log(`⚡ ${acoes.length} ação(ões) a executar: ${acoes.map((a: any) => a.type).join(', ')}`);
+        await executeAcoes(supabase, acoes, clienteId);
+      }
 
       // 8. Decidir se responde em texto ou áudio
       // Responde em áudio se: mensagem foi áudio OU cliente tem preferencia_audio

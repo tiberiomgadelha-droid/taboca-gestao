@@ -6,6 +6,15 @@ import { fmtCurrency, fmtDate, fmtDateTime, daysUntil, isLowStock, isExpiringSoo
 import { sbFetchOlderMessages } from "../utils/dataLoader.js";
 import { C, s, Btn, Badge, Modal, FormField, Input, Select, Textarea, Divider, ImageUpload, processarImagem, logActivity, useIsMobile } from "../components/ui.jsx";
 
+// ── Componente auxiliar: renderiza foto ou emoji do produto ──
+const ProdutoFoto = ({ produto, size = 80 }) => {
+  const emojis = { 'panificação': '🥖', 'pizzas': '🍕', 'bebidas': '🧋', 'default': '📦' };
+  if (produto?.foto_url) {
+    return <img src={produto.foto_url} alt={produto.nome} style={{width:size,height:size,borderRadius:8,objectFit:'cover'}} onError={e=>{e.target.style.display='none';}}/>;
+  }
+  return <span style={{fontSize: size * 0.6}}>{emojis[produto?.categoria] || produto?.emoji || emojis.default}</span>;
+};
+
 const PanelEstoque = ({data, setData, openModal, isMobile}) => {
   const [tab, setTab] = useState('produtos');
   const [filtCat, setFiltCat] = useState('todos');
