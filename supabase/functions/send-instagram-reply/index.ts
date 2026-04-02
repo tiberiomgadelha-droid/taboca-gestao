@@ -4,7 +4,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const INSTAGRAM_ACCESS_TOKEN = Deno.env.get("INSTAGRAM_API_TOKEN") ?? Deno.env.get("INSTAGRAM_ACCESS_TOKEN") ?? "";
+const INSTAGRAM_ACCESS_TOKEN = Deno.env.get("INSTAGRAM_ACCESS_TOKEN") ?? Deno.env.get("INSTAGRAM_API_TOKEN") ?? "";
 const INSTAGRAM_PAGE_ID = Deno.env.get("INSTAGRAM_PAGE_ID") ?? "";
 
 const corsHeaders = {

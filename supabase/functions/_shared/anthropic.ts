@@ -23,7 +23,7 @@ export async function callClaude(request: AnthropicRequest): Promise<{ reply: st
     throw new Error('ANTHROPIC_API_KEY não configurada. Configure com: supabase secrets set ANTHROPIC_API_KEY=sk-ant-...');
   }
 
-  const model = request.model || 'claude-sonnet-4-20250514';
+  const model = request.model || 'claude-sonnet-4-6';
 
   const response = await fetch(ANTHROPIC_API_URL, {
     method: 'POST',

@@ -1,48 +1,16 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { UserPlus, X } from "lucide-react";
-import { sbInsert } from "../utils/supabase.js";
 
-export const C = {
-  primary: '#7B3A10', primaryHover: '#5C2A0A', primaryLight: '#A0522D',
-  amber: '#D4884A', cream: '#FFF8F0', bg: '#FAF7F4', card: '#FFFFFF',
-  border: '#EAE0D5', borderLight: '#F0E8DE',
-  navy: '#1E2A4A', navyMid: '#374260', navyLight: '#6B7280',
-  green: '#059669', greenLight: '#D1FAE5',
-  red: '#DC2626', redLight: '#FEE2E2',
-  yellow: '#D97706', yellowLight: '#FEF3C7',
-  blue: '#2563EB', blueLight: '#DBEAFE',
-  purple: '#7C3AED', purpleLight: '#EDE9FE',
-};
+// Re-exports from dedicated modules (backward compatibility)
+export { C, s } from "../constants/theme.js";
+export { useIsMobile } from "../hooks/useIsMobile.js";
+export { useLiveClock } from "../hooks/useLiveClock.js";
+export { processarImagem } from "../utils/imageProcessing.js";
+export { logActivity } from "../utils/activityLogger.js";
 
-export const s = {
-  card: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20 },
-  cardSm: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 },
-  btn: { background: C.primary, color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', cursor: 'pointer', fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 },
-  btnSm: { background: C.primary, color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontWeight: 600, fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 },
-  btnOutline: { background: 'transparent', color: C.primary, border: `1.5px solid ${C.primary}`, borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 },
-  input: { border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 14px', fontSize: 14, outline: 'none', background: '#fff', width: '100%', boxSizing: 'border-box' },
-  label: { fontSize: 11, fontWeight: 700, color: C.navyLight, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 5, display: 'block' },
-  sectionTitle: { fontSize: 15, fontWeight: 700, color: C.navy, marginBottom: 14 },
-};
-
-export const useIsMobile = () => {
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  useEffect(() => {
-    const handler = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handler);
-    return () => window.removeEventListener('resize', handler);
-  }, []);
-  return isMobile;
-};
-
-export const useLiveClock = () => {
-  const [now, setNow] = useState(new Date());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 30000);
-    return () => clearInterval(timer);
-  }, []);
-  return now;
-};
+import { C, s } from "../constants/theme.js";
+import { useIsMobile } from "../hooks/useIsMobile.js";
+import { processarImagem } from "../utils/imageProcessing.js";
 
 export const Btn = ({children, onClick, variant='primary', size='md', disabled, style:sx={}, ...props}) => {
   const base = size==='sm' ? s.btnSm : (variant==='outline' ? s.btnOutline : s.btn);
@@ -114,37 +82,6 @@ export const TabocaLogo = ({size=80}) => {
   return <img src="/Logomarca_Taboca.png" onError={()=>setImgError(true)} style={{width:size,height:size,objectFit:'contain'}} alt="Taboca Pão e Pizza"/>;
 };
 
-export const processarImagem = (file, callback) => {
-  if(!file || !['image/jpeg','image/png','image/webp','image/jpg'].includes(file.type)) {
-    alert('Formato inválido. Use JPG, PNG ou WebP.');
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const img = new Image();
-    img.onload = () => {
-      const MAX = 800;
-      let { width, height } = img;
-      if (width > MAX || height > MAX) {
-        if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
-        else { width = Math.round(width * MAX / height); height = MAX; }
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = width; canvas.height = height;
-      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-      let quality = 0.7;
-      let base64 = canvas.toDataURL('image/jpeg', quality);
-      while (base64.length > 150 * 1024 * 1.37 && quality > 0.2) {
-        quality -= 0.1;
-        base64 = canvas.toDataURL('image/jpeg', quality);
-      }
-      callback(base64);
-    };
-    img.src = e.target.result;
-  };
-  reader.readAsDataURL(file);
-};
-
 export const ImageUpload = ({value, onChange, label}) => {
   const inputRef = useRef(null);
   const sizeKB = value ? Math.round(value.length * 0.75 / 1024) : 0;
@@ -156,13 +93,4 @@ export const ImageUpload = ({value, onChange, label}) => {
       <div><div style={{fontSize:10,color:C.navyLight,fontWeight:600}}>{sizeKB} KB</div><button type="button" onClick={()=>onChange('')} style={{border:'none',background:'none',cursor:'pointer',padding:0}}><X size={14} color={C.red}/></button></div>
     </div>}
   </div>;
-};
-
-export const logActivity = (setData, tipo, descricao, operador='Tiberio') => {
-  const entry = { tipo, descricao, data: new Date().toISOString(), operador, icon: tipo };
-  setData(prev => ({
-    ...prev,
-    activityLog: [{id: Date.now(), ...entry}, ...prev.activityLog]
-  }));
-  sbInsert('activity_log', entry).catch(e => console.error('logActivity error:', e));
 };

@@ -8,6 +8,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { callClaude } from '../_shared/anthropic.ts';
 
 // ── CORS ──
 const corsHeaders: Record<string, string> = {
@@ -22,36 +23,6 @@ function getSupabaseAdmin() {
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   );
-}
-
-// ── Claude API ──
-async function callClaude(opts: { system: string; messages: any[]; max_tokens: number }) {
-  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
-
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: opts.max_tokens,
-      system: opts.system,
-      messages: opts.messages,
-    }),
-  });
-
-  if (!resp.ok) {
-    const errBody = await resp.text();
-    console.error('Anthropic API error:', resp.status, errBody);
-    throw new Error(`Anthropic error ${resp.status}: ${errBody}`);
-  }
-
-  const data = await resp.json();
-  return { reply: data.content?.[0]?.text || '', usage: data.usage };
 }
 
 // ── Rate Limit ──

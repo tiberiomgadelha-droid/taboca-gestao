@@ -1,10 +1,9 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { LayoutDashboard, BookOpen, Package, ChefHat, Users, MessageSquare, Truck, Bot, Plus, Bell, Search, TrendingUp, TrendingDown, AlertTriangle, ShoppingCart, DollarSign, UserPlus, Activity, ChevronRight, ChevronDown, ChevronUp, X, Check, Edit, Trash2, Eye, EyeOff, MapPin, Phone, Calendar, Clock, ArrowUpRight, ArrowDownRight, FileText, CreditCard, Wallet, Send, RefreshCw, Flame, Package2, Target, MessageCircle, CheckCircle, XCircle, Circle, Settings, Layers, AlertCircle, Filter, Star, Archive, Loader, Home, Instagram, Route, Navigation, Wheat, Coffee, Pizza, ChevronLeft, Info, BarChart2, Building, PieChart as PieIcon, Menu, Receipt, ArrowLeft, Map, GripVertical, LogOut } from "lucide-react";
-import { supabase, sbInsert, sbUpdate, sbDelete, sbUpsertSettings } from "../utils/supabase.js";
-import { fmtCurrency, fmtDate, fmtDateTime, daysUntil, isLowStock, isExpiringSoon, NOW } from "../utils/helpers.js";
-import { sbFetchOlderMessages } from "../utils/dataLoader.js";
-import { C, s, Btn, Badge, Modal, FormField, Input, Select, Textarea, Divider, ImageUpload, processarImagem, logActivity, useIsMobile } from "../components/ui.jsx";
+import { useState, useMemo, useCallback } from "react";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { Users, Plus, Edit, Trash2, MapPin, Phone, Instagram, Star, DollarSign, Check } from "lucide-react";
+import { sbInsert, sbUpdate, sbDelete } from "../utils/supabase.js";
+import { fmtCurrency, fmtDate } from "../utils/helpers.js";
+import { C, s, Btn, Badge, Modal, FormField, Input, Select, Textarea } from "../components/ui.jsx";
 
 const PanelClientes = ({data, setData, openModal, isMobile}) => {
   const [view, setView] = useState('lista');
@@ -13,7 +12,7 @@ const PanelClientes = ({data, setData, openModal, isMobile}) => {
   const [editCliente, setEditCliente] = useState(null);
   const [mapsOpen, setMapsOpen] = useState(false);
 
-  const ticketMedio = (() => {
+  const ticketMedio = useMemo(() => {
     const totals = {};
     data.pedidos.filter(p=>p.pagamento_confirmado).forEach(p=>{
       if(!totals[p.cliente_id])totals[p.cliente_id]={total:0,count:0};
@@ -22,18 +21,27 @@ const PanelClientes = ({data, setData, openModal, isMobile}) => {
     });
     const vals = Object.values(totals);
     return vals.length>0?vals.reduce((a,v)=>a+v.total/v.count,0)/vals.length:0;
-  })();
+  }, [data.pedidos]);
 
-  const clienteRanking = data.clientes.map(c=>{
-    const pedidos = data.pedidos.filter(p=>p.cliente_id===c.id&&p.pagamento_confirmado);
-    return {...c, totalCompras:pedidos.reduce((a,p)=>a+p.valor_total,0), numPedidos:pedidos.length};
-  }).sort((a,b)=>b.totalCompras-a.totalCompras);
+  const clienteRanking = useMemo(() => {
+    const pedidosByCliente = {};
+    data.pedidos.forEach(p => {
+      if (!p.pagamento_confirmado) return;
+      if (!pedidosByCliente[p.cliente_id]) pedidosByCliente[p.cliente_id] = { total: 0, count: 0 };
+      pedidosByCliente[p.cliente_id].total += p.valor_total;
+      pedidosByCliente[p.cliente_id].count++;
+    });
+    return data.clientes.map(c => {
+      const stats = pedidosByCliente[c.id] || { total: 0, count: 0 };
+      return { ...c, totalCompras: stats.total, numPedidos: stats.count };
+    }).sort((a, b) => b.totalCompras - a.totalCompras);
+  }, [data.clientes, data.pedidos]);
 
-  const localData = data.localidades.map(l=>({name:l.nome_localidade,clientes:data.clientes.filter(c=>c.localidade_id===l.id).length}));
+  const localData = useMemo(() => data.localidades.map(l=>({name:l.nome_localidade,clientes:data.clientes.filter(c=>c.localidade_id===l.id).length})), [data.localidades, data.clientes]);
 
   const grupoColors = {1:'gray',2:'blue',3:'yellow',4:'green',5:'purple'};
 
-  const handleDrop = (e, novoGrupoId) => {
+  const handleDrop = useCallback((e, novoGrupoId) => {
     e.preventDefault();
     if(!dragItem) return;
     const {clienteId, grupoAntigoId} = dragItem;
@@ -51,7 +59,7 @@ const PanelClientes = ({data, setData, openModal, isMobile}) => {
       }), clientes: prev.clientes.map(c=>c.id===clienteId?{...c,grupo_id:novoGrupoId}:c)};
     });
     setDragItem(null); setDragOver(null);
-  };
+  }, [dragItem, setData]);
 
   // Progressão automática de grupo
   const atualizarGrupoCliente = (clienteId) => {
@@ -68,15 +76,26 @@ const PanelClientes = ({data, setData, openModal, isMobile}) => {
     return 3;
   };
 
-  // Dias sem comprar
-  const diasSemComprar = (clienteId) => {
-    const pedidos = data.pedidos.filter(p=>p.cliente_id===clienteId&&p.pagamento_confirmado).sort((a,b)=>new Date(b.data_pedido)-new Date(a.data_pedido));
-    if(pedidos.length===0) return null;
-    return Math.floor((NOW-new Date(pedidos[0].data_pedido))/(1000*60*60*24));
-  };
+  // Dias sem comprar (memoized lookup map)
+  const diasSemComprarMap = useMemo(() => {
+    const lastPurchase = {};
+    data.pedidos.forEach(p => {
+      if (!p.pagamento_confirmado) return;
+      const date = new Date(p.data_pedido);
+      if (!lastPurchase[p.cliente_id] || date > lastPurchase[p.cliente_id]) {
+        lastPurchase[p.cliente_id] = date;
+      }
+    });
+    const now = new Date();
+    const result = {};
+    Object.entries(lastPurchase).forEach(([id, date]) => {
+      result[id] = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+    });
+    return result;
+  }, [data.pedidos]);
 
   // Save edit cliente
-  const saveEditCliente = () => {
+  const saveEditCliente = useCallback(() => {
     if(!editCliente) return;
     const exists = data.clientes.find(c=>c.id===editCliente.id);
     if(exists){
@@ -84,7 +103,7 @@ const PanelClientes = ({data, setData, openModal, isMobile}) => {
       sbUpdate('clientes', editCliente.id, editCliente).catch(console.error);
     } else {
       const tempId = editCliente.id || Date.now();
-      const newCli = {...editCliente, id: tempId, data_cadastro:NOW.toISOString().slice(0,10)};
+      const newCli = {...editCliente, id: tempId, data_cadastro:new Date().toISOString().slice(0,10)};
       setData(prev=>({...prev,clientes:[...prev.clientes,newCli],grupos:prev.grupos.map(g=>g.id===editCliente.grupo_id?{...g,lista_cliente_ids:[...g.lista_cliente_ids,tempId]}:g)}));
       sbInsert('clientes', {...newCli, id:undefined}).then(saved => {
         setData(p=>({...p,clientes:p.clientes.map(c=>c.id===tempId?{...c,id:saved.id}:c),grupos:p.grupos.map(g=>({...g,lista_cliente_ids:g.lista_cliente_ids.map(id=>id===tempId?saved.id:id)}))}));
@@ -93,8 +112,8 @@ const PanelClientes = ({data, setData, openModal, isMobile}) => {
       }).catch(console.error);
     }
     setEditCliente(null);
-  };
-  const deleteCliente = () => {
+  }, [editCliente, data.clientes, data.grupos, setData]);
+  const deleteCliente = useCallback(() => {
     if(!editCliente||!confirm('Tem certeza? Esta ação não pode ser desfeita.')) return;
     setData(prev=>({...prev,clientes:prev.clientes.filter(c=>c.id!==editCliente.id),grupos:prev.grupos.map(g=>({...g,lista_cliente_ids:g.lista_cliente_ids.filter(id=>id!==editCliente.id)}))}));
     sbDelete('clientes', editCliente.id).catch(console.error);
@@ -104,7 +123,7 @@ const PanelClientes = ({data, setData, openModal, isMobile}) => {
       }
     });
     setEditCliente(null);
-  };
+  }, [editCliente, data.grupos, setData]);
 
   return (
     <div style={{flex:1,padding:isMobile?16:24,overflowY:'auto'}}>
@@ -225,7 +244,7 @@ const PanelClientes = ({data, setData, openModal, isMobile}) => {
                 <div style={{fontSize:10,color:C.navyLight,marginBottom:10}}>{grupo.descricao}</div>
                 {grupo.lista_cliente_ids.map(cid=>{
                   const c=data.clientes.find(cl=>cl.id===cid);
-                  const dias = c?diasSemComprar(cid):null;
+                  const dias = c?(diasSemComprarMap[cid]??null):null;
                   return c?<div key={cid} draggable onDragStart={()=>setDragItem({clienteId:cid,grupoAntigoId:grupo.id})} style={{background:'#fff',borderRadius:7,padding:'8px 10px',marginBottom:6,cursor:'grab',border:`1px solid ${C.border}`,boxShadow:'0 1px 3px rgba(0,0,0,0.05)',userSelect:'none'}}>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                       <div style={{fontWeight:600,color:C.navy,fontSize:12}}>{c.nome}</div>

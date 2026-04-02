@@ -6,7 +6,7 @@ export const sbFetchDashboard = async () => {
     { name: 'produtos' },
     { name: 'insumos' },
     { name: 'pedidos' },
-    { name: 'transactions' },
+    { name: 'transactions', restPath: 'transactions?select=id,descricao,data,conta,categoria,tipo,valor,insumo_reposto&order=id.asc' },
   ]);
   return {
     settings: results.settings?.[0] || {},
@@ -25,7 +25,7 @@ export const sbFetchOperational = async () => {
   const results = await sbFetchTables([
     { name: 'colaboradores' },
     { name: 'fichas' },
-    { name: 'clientes' },
+    { name: 'clientes', restPath: 'clientes?select=id,nome,whatsapp,instagram,endereco_completo,localidade_id,grupo_id,preferencias,data_cadastro,link_googlemaps,foto_fachada_url,bot_ativo&order=id.asc' },
     { name: 'grupos' },
     { name: 'localidades' },
     { name: 'producoes' },
@@ -55,8 +55,8 @@ export const sbFetchHeavy = async () => {
   const results = await sbFetchTables([
     { name: 'whatsapp_config' },
     { name: 'instagram_config' },
-    { name: 'mensagens', restPath: 'mensagens?select=*&order=created_at.desc&limit=200' },
-    { name: 'activity_log', restPath: `activity_log?select=*&data=gte.${isoDate}&order=data.desc&limit=50` },
+    { name: 'mensagens', restPath: 'mensagens?select=id,cliente_id,canal,data_hora,conteudo,status,de_cliente,origem&order=created_at.desc&limit=200' },
+    { name: 'activity_log', restPath: `activity_log?select=id,tipo,descricao,data,operador,icon&data=gte.${isoDate}&order=data.desc&limit=50` },
   ]);
   return {
     mensagens: (results.mensagens || []).sort((a,b) => a.id - b.id),
@@ -75,7 +75,7 @@ export const sbFetchAll = async () => {
 
 export const sbFetchOlderMessages = async (beforeId) => {
   try {
-    const data = await _restFetch(`mensagens?select=*&id=lt.${beforeId}&order=id.desc&limit=100`);
+    const data = await _restFetch(`mensagens?select=id,cliente_id,canal,data_hora,conteudo,status,de_cliente,origem&id=lt.${beforeId}&order=id.desc&limit=100`);
     return (data || []).sort((a,b) => a.id - b.id);
   } catch (e) {
     console.error('fetch older messages:', e);

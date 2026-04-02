@@ -1,25 +1,13 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { LayoutDashboard, BookOpen, Package, ChefHat, Users, MessageSquare, Truck, Bot, Plus, Bell, Search, TrendingUp, TrendingDown, AlertTriangle, ShoppingCart, DollarSign, UserPlus, Activity, ChevronRight, ChevronDown, ChevronUp, X, Check, Edit, Trash2, Eye, EyeOff, MapPin, Phone, Calendar, Clock, ArrowUpRight, ArrowDownRight, FileText, CreditCard, Wallet, Send, RefreshCw, Flame, Package2, Target, MessageCircle, CheckCircle, XCircle, Circle, Settings, Layers, AlertCircle, Filter, Star, Archive, Loader, Home, Instagram, Route, Navigation, Wheat, Coffee, Pizza, ChevronLeft, Info, BarChart2, Building, PieChart as PieIcon, Menu, Receipt, ArrowLeft, Map, GripVertical, LogOut } from "lucide-react";
-import { supabase, sbInsert, sbUpdate, sbDelete, sbUpsertSettings } from "../utils/supabase.js";
-import { fmtCurrency, fmtDate, fmtDateTime, daysUntil, isLowStock, isExpiringSoon, NOW } from "../utils/helpers.js";
-import { sbFetchOlderMessages } from "../utils/dataLoader.js";
-import { C, s, Btn, Badge, Modal, FormField, Input, Select, Textarea, Divider, ImageUpload, processarImagem, logActivity, useIsMobile } from "../components/ui.jsx";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { Bot, Send, Edit, X, BarChart2, ArrowLeft, MessageCircle, Loader, AlertCircle } from "lucide-react";
+import { sbInsert, sbUpdate } from "../utils/supabase.js";
+import { fmtDate, fmtDateTime } from "../utils/helpers.js";
+import { C, s, Btn, Badge, logActivity } from "../components/ui.jsx";
 import VoiceInputButton from "../components/VoiceInputButton.jsx";
+import { callAgentAtendente } from "../utils/agentHelpers.js";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-// Chamar o agente IA de atendimento (Supabase Edge Function)
-const callAgentAtendente = async (cliente_id, mensagem, canal, history=[]) => {
-  const resp = await fetch(`${supabaseUrl}/functions/v1/agent-atendente`, {
-    method:'POST',
-    headers:{ 'Content-Type':'application/json', 'Authorization': `Bearer ${supabaseKey}` },
-    body: JSON.stringify({ cliente_id, mensagem, canal, history })
-  });
-  if(!resp.ok) throw new Error(`Erro ${resp.status}`);
-  return resp.json();
-};
 
 // Enviar mensagem de volta ao cliente via Instagram Direct (Supabase Edge Function)
 const sendInstagramReply = async (recipientId, message) => {
@@ -49,20 +37,28 @@ const PanelAtendimento = ({data, setData, isMobile}) => {
 
   useEffect(()=>{ endRef.current?.scrollIntoView({behavior:'smooth'}); }, [selCliente, data.mensagens]);
 
-  const convs = {};
-  data.mensagens.forEach(m=>{
-    if(!convs[m.cliente_id])convs[m.cliente_id]={cliente_id:m.cliente_id,msgs:[],ultima:m};
-    convs[m.cliente_id].msgs.push(m);
-    if(new Date(m.data_hora)>new Date(convs[m.cliente_id].ultima.data_hora)) convs[m.cliente_id].ultima=m;
-  });
+  const { convList, convs } = useMemo(() => {
+    const convs = {};
+    data.mensagens.forEach(m => {
+      if (!convs[m.cliente_id]) convs[m.cliente_id] = { cliente_id: m.cliente_id, msgs: [], ultima: m };
+      convs[m.cliente_id].msgs.push(m);
+      if (new Date(m.data_hora) > new Date(convs[m.cliente_id].ultima.data_hora)) convs[m.cliente_id].ultima = m;
+    });
+    return { convs, convList: Object.values(convs).sort((a, b) => new Date(b.ultima.data_hora) - new Date(a.ultima.data_hora)) };
+  }, [data.mensagens]);
 
-  const convList = Object.values(convs).sort((a,b)=>new Date(b.ultima.data_hora)-new Date(a.ultima.data_hora))
-    .filter(c=>filtro==='todos'||filtro===c.ultima.canal||(filtro==='nao_lida'&&c.msgs.some(m=>m.status==='nao_lida')));
+  const filteredConvList = useMemo(() =>
+    convList.filter(c => filtro === 'todos' || filtro === c.ultima.canal || (filtro === 'nao_lida' && c.msgs.some(m => m.status === 'nao_lida'))),
+    [convList, filtro]
+  );
 
-  const selMsgs = selCliente ? (convs[selCliente]?.msgs||[]).sort((a,b)=>new Date(a.data_hora)-new Date(b.data_hora)) : [];
+  const selMsgs = useMemo(() =>
+    selCliente ? (convs[selCliente]?.msgs || []).sort((a, b) => new Date(a.data_hora) - new Date(b.data_hora)) : [],
+    [selCliente, convs]
+  );
   const selCli = selCliente ? data.clientes.find(c=>c.id===selCliente) : null;
 
-  const unread = data.mensagens.filter(m=>m.status==='nao_lida').length;
+  const unread = useMemo(() => data.mensagens.filter(m => m.status === 'nao_lida').length, [data.mensagens]);
 
   // Estatísticas do Agente 2
   const aiStats = useMemo(()=>{
@@ -193,7 +189,7 @@ const PanelAtendimento = ({data, setData, isMobile}) => {
           </div>
         )}
         <div style={{flex:1,overflowY:'auto'}}>
-          {convList.map(conv=>{
+          {filteredConvList.map(conv=>{
             const cli=data.clientes.find(c=>c.id===conv.cliente_id);
             const hasUnread=conv.msgs.some(m=>m.status==='nao_lida');
             return <div key={conv.cliente_id} onClick={()=>{setSelCliente(conv.cliente_id);if(isMobile)setShowInbox(false);setData(prev=>{const unread=prev.mensagens.filter(m=>m.cliente_id===conv.cliente_id&&m.status==='nao_lida');unread.forEach(m=>sbUpdate('mensagens',m.id,{status:'lida'}).catch(console.error));return{...prev,mensagens:prev.mensagens.map(m=>m.cliente_id===conv.cliente_id?{...m,status:'lida'}:m)};});}} style={{padding:'12px 16px',borderBottom:`1px solid ${C.borderLight}`,cursor:'pointer',background:selCliente===conv.cliente_id?'#FEF3EA':'#fff',transition:'background 0.1s'}}>
@@ -210,7 +206,7 @@ const PanelAtendimento = ({data, setData, isMobile}) => {
               <div style={{fontSize:11,color:C.navyLight,marginTop:4,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',paddingLeft:42}}>{conv.ultima.conteudo}</div>
             </div>;
           })}
-          {convList.length===0&&<div style={{padding:20,textAlign:'center',color:C.navyLight,fontSize:12}}>Nenhuma conversa encontrada.</div>}
+          {filteredConvList.length===0&&<div style={{padding:20,textAlign:'center',color:C.navyLight,fontSize:12}}>Nenhuma conversa encontrada.</div>}
         </div>
       </div>
       )}
