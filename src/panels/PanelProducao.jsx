@@ -8,10 +8,11 @@ import { C, s, Btn, Badge, Modal, FormField, Input, Select, Textarea, Divider } 
 const PanelProducao = ({data, setData, openModal}) => {
   const [showNovaFornada, setShowNovaFornada] = useState(false);
   const [editFornada, setEditFornada] = useState(null);
-  const [fornadaForm, setFornadaForm] = useState({data:'',hora_inicio:'',hora_fim:'',tipo:'Pães',encerramento_encomenda:''});
+  const [fornadaForm, setFornadaForm] = useState({data:'',hora_inicio:'',hora_fim:'',tipo:'Pão',encerramento_encomenda:''});
   const [showNovaProducao, setShowNovaProducao] = useState(false);
   const [producaoForm, setProducaoForm] = useState({produto_id:'',quantidade:'',observacao:'',operador:data.colaboradores[0]?.nome||'',etapas_producao:[]});
-  const mesProducoes = data.producoes.filter(p=>p.data.startsWith('2026-03'));
+  const mesAtualStr = new Date().toISOString().slice(0,7);
+  const mesProducoes = data.producoes.filter(p=>p.data.startsWith(mesAtualStr));
   const totalProd = mesProducoes.reduce((a,p)=>a+p.quantidade,0);
   const pendentes = data.pedidos.filter(p=>p.status_producao==='pendente');
 
@@ -68,6 +69,14 @@ const PanelProducao = ({data, setData, openModal}) => {
             if(idx>=0) produtosAtualizados[idx] = {...produtosAtualizados[idx], quantidade: produtosAtualizados[idx].quantidade - it.quantidade};
           });
           const pedCli = prev.clientes.find(c=>c.id===ped.cliente_id)?.nome||'';
+          // Registrar movimentação de estoque (saída) para cada item do pedido
+          ped.itens.forEach(it => {
+            const pNome = produtosAtualizados.find(p=>p.id===it.produto_id)?.nome||'?';
+            const movDesc = `Saída estoque — ${it.quantidade}x ${pNome} — Pedido #${ped.id} — Cliente: ${pedCli}`;
+            newData.activityLog = [{id:Date.now()+Math.random(),tipo:'estoque',descricao:movDesc,data:new Date().toISOString(),operador:'TABOCA',icon:'estoque'},...(newData.activityLog||prev.activityLog)];
+            // Persist stock movement to Supabase
+            sbInsert('activity_log', {tipo:'estoque',descricao:movDesc,data:new Date().toISOString(),operador:'TABOCA',icon:'estoque'}).catch(console.error);
+          });
           newData.activityLog = [{id:Date.now()+Math.random(),tipo:'pedido',descricao:`Pedido #${ped.id} — ${pedCli} — liberado para entrega (estoque OK)`,data:new Date().toISOString(),operador:'TABOCA',icon:'pedido'},...(newData.activityLog||prev.activityLog)];
           return {...ped, status_producao:'pronto', status_entrega:'aguardando_entrega'};
         }
@@ -119,7 +128,7 @@ const PanelProducao = ({data, setData, openModal}) => {
         setData(p=>({...p,fornadas:p.fornadas.map(ff=>ff.id===tempId?{...ff,id:saved.id}:ff)}));
       }).catch(console.error);
       setShowNovaFornada(false);
-      setFornadaForm({data:'',hora_inicio:'',hora_fim:'',tipo:'Pães',encerramento_encomenda:''});
+      setFornadaForm({data:'',hora_inicio:'',hora_fim:'',tipo:'Pão',encerramento_encomenda:''});
     }
   };
 
@@ -127,11 +136,35 @@ const PanelProducao = ({data, setData, openModal}) => {
     <div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
         <FormField label="Data" required><Input type="date" value={form.data} onChange={e=>setForm({...form,data:e.target.value})}/></FormField>
-        <FormField label="Tipo"><Input value={form.tipo} onChange={e=>setForm({...form,tipo:e.target.value})} placeholder="Ex: Pães, Pães + Pizzas"/></FormField>
+        <FormField label="Tipo"><Select value={form.tipo} onChange={e=>setForm({...form,tipo:e.target.value})}><option value="Pão">Pão</option><option value="Pizza">Pizza</option><option value="Pão e Pizza">Pão e Pizza</option></Select></FormField>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-        <FormField label="Hora Início"><Input type="time" value={form.hora_inicio} onChange={e=>setForm({...form,hora_inicio:e.target.value})}/></FormField>
-        <FormField label="Hora Fim"><Input type="time" value={form.hora_fim} onChange={e=>setForm({...form,hora_fim:e.target.value})}/></FormField>
+        <FormField label="Hora Início">
+          <div style={{display:'flex',gap:6}}>
+            <Select value={form.hora_inicio?.split(':')[0]||''} onChange={e=>{const m=form.hora_inicio?.split(':')[1]||'00';setForm({...form,hora_inicio:`${e.target.value}:${m}`});}}>
+              <option value="">HH</option>
+              {Array.from({length:19},(_,i)=>i+5).map(h=><option key={h} value={String(h).padStart(2,'0')}>{String(h).padStart(2,'0')}</option>)}
+            </Select>
+            <Select value={form.hora_inicio?.split(':')[1]||''} onChange={e=>{const h=form.hora_inicio?.split(':')[0]||'05';setForm({...form,hora_inicio:`${h}:${e.target.value}`});}}>
+              <option value="">MM</option>
+              <option value="00">00</option>
+              <option value="30">30</option>
+            </Select>
+          </div>
+        </FormField>
+        <FormField label="Hora Fim">
+          <div style={{display:'flex',gap:6}}>
+            <Select value={form.hora_fim?.split(':')[0]||''} onChange={e=>{const m=form.hora_fim?.split(':')[1]||'00';setForm({...form,hora_fim:`${e.target.value}:${m}`});}}>
+              <option value="">HH</option>
+              {Array.from({length:19},(_,i)=>i+5).map(h=><option key={h} value={String(h).padStart(2,'0')}>{String(h).padStart(2,'0')}</option>)}
+            </Select>
+            <Select value={form.hora_fim?.split(':')[1]||''} onChange={e=>{const h=form.hora_fim?.split(':')[0]||'05';setForm({...form,hora_fim:`${h}:${e.target.value}`});}}>
+              <option value="">MM</option>
+              <option value="00">00</option>
+              <option value="30">30</option>
+            </Select>
+          </div>
+        </FormField>
       </div>
       <FormField label="Encerramento de Encomendas"><Input type="datetime-local" value={form.encerramento_encomenda?.slice(0,16)||''} onChange={e=>setForm({...form,encerramento_encomenda:e.target.value})}/></FormField>
     </div>

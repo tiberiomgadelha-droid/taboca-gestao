@@ -53,7 +53,7 @@ const Header = ({title, subtitle, settings, children, isMobile, now, busca, setB
         <div style={{fontSize:10,color:C.primary,fontWeight:700,letterSpacing:'0.08em'}}>{settings?.cargo||'DIRETOR DE OPERAÇÕES'}</div>
         <div style={{fontSize:9,color:C.navyLight}}>© 2026 Taboca Pão & Pizza — Gestão v1.0</div>
       </div>}
-      {!isMobile&&<div style={{width:36,height:36,borderRadius:18,background:'#FEF3EA',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>👨‍🍳</div>}
+      {!isMobile&&<img src="/Tiberio Gadelha.jpeg" alt={settings?.responsavel||'Operador'} style={{width:36,height:36,borderRadius:18,objectFit:'cover'}}/>}
       {!isMobile&&onLogout&&<button onClick={onLogout} title="Sair / Trocar usuário" onMouseEnter={e=>{e.currentTarget.style.color=C.red;e.currentTarget.style.background=C.redLight;}} onMouseLeave={e=>{e.currentTarget.style.color=C.navyLight;e.currentTarget.style.background='transparent';}} style={{border:'none',background:'transparent',cursor:'pointer',padding:8,borderRadius:8,color:C.navyLight,transition:'all 0.15s',display:'flex',alignItems:'center',justifyContent:'center'}}>
         <LogOut size={18}/>
       </button>}

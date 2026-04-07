@@ -113,7 +113,7 @@ async function sendInstagramMessage(recipientId: string, message: string): Promi
 // FASE 6: Prioriza @username em vez do name ou ID numérico
 async function getInstagramUsername(userId: string): Promise<{ displayName: string; username: string | null }> {
   try {
-    const url = `https://graph.instagram.com/v21.0/${userId}?fields=name,username&access_token=${INSTAGRAM_ACCESS_TOKEN}`;
+    const url = `https://graph.facebook.com/v21.0/${userId}?fields=name,username&access_token=${INSTAGRAM_ACCESS_TOKEN}`;
     const response = await fetch(url);
     if (response.ok) {
       const data = await response.json();
@@ -132,10 +132,17 @@ async function getInstagramUsername(userId: string): Promise<{ displayName: stri
 // ── Buscar ou criar cliente pelo ID do Instagram ──
 // FASE 6: Recebe displayName (@username) para salvar nome legível
 async function findOrCreateCliente(supabase: any, instagramId: string, displayName: string): Promise<{ id: number; bot_ativo: boolean; preferencia_audio: boolean }> {
+  // Busca por ID numérico do Instagram E por @username (displayName)
+  let orFilter = `instagram.eq.${instagramId},instagram.eq.@${instagramId},instagram.ilike.%${instagramId}%`;
+  // Se temos @username, também buscar por ele (resolve duplicatas entre ID numérico e @username)
+  if (displayName && displayName.startsWith('@')) {
+    const username = displayName.replace('@', '');
+    orFilter += `,instagram.eq.${displayName},instagram.eq.${username},instagram.ilike.%${username}%`;
+  }
   const { data: existing } = await supabase
     .from('clientes')
     .select('id, nome, bot_ativo, preferencia_audio, instagram')
-    .or(`instagram.eq.${instagramId},instagram.eq.@${instagramId},instagram.ilike.%${instagramId}%`)
+    .or(orFilter)
     .limit(1);
 
   if (existing && existing.length > 0) {
@@ -160,7 +167,7 @@ async function findOrCreateCliente(supabase: any, instagramId: string, displayNa
     };
   }
 
-  // Criar novo cliente com @username como nome
+  // Criar novo cliente com @username como nome + grupo "potenciais clientes"
   const { data: newClient, error } = await supabase
     .from('clientes')
     .insert({
@@ -169,6 +176,7 @@ async function findOrCreateCliente(supabase: any, instagramId: string, displayNa
       data_cadastro: new Date().toISOString().split('T')[0],
       bot_ativo: true,
       preferencia_audio: false,
+      grupo_id: 1,
     })
     .select('id')
     .single();
@@ -178,7 +186,15 @@ async function findOrCreateCliente(supabase: any, instagramId: string, displayNa
     throw new Error('Falha ao criar cliente');
   }
 
-  console.log(`Novo cliente criado: ${displayName} (ID: ${newClient.id})`);
+  // Adicionar ao grupo "potenciais clientes" (id=1) no Kanban
+  try {
+    const { data: grupo } = await supabase.from('grupos').select('lista_cliente_ids').eq('id', 1).single();
+    if (grupo) {
+      await supabase.from('grupos').update({ lista_cliente_ids: [...(grupo.lista_cliente_ids || []), newClient.id] }).eq('id', 1);
+    }
+  } catch (e) { console.error('Erro ao adicionar cliente ao grupo:', e); }
+
+  console.log(`Novo cliente criado: ${displayName} (ID: ${newClient.id}, grupo: potenciais)`);
   return { id: newClient.id, bot_ativo: true, preferencia_audio: false };
 }
 
@@ -648,7 +664,17 @@ serve(async (req: Request) => {
         transcricao: transcricao,
       });
 
-      // 5. Verificar se o bot está ativo para este cliente
+      // 5a. Verificar se o bot está ativo GLOBALMENTE para Instagram
+      const { data: globalSettings } = await supabase.from('settings').select('bot_instagram_ativo').limit(1).single();
+      if (globalSettings && globalSettings.bot_instagram_ativo === false) {
+        console.log(`🚫 Bot Instagram desativado globalmente — mensagem salva, aguardando atendimento manual.`);
+        return new Response(JSON.stringify({ status: "ok", processed: true, bot_skipped: true, reason: "global_toggle_off" }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // 5b. Verificar se o bot está ativo para este cliente
       if (!cliente.bot_ativo) {
         console.log(`🚫 Bot desativado para cliente ID ${clienteId} — mensagem salva, aguardando atendimento manual.`);
         return new Response(JSON.stringify({ status: "ok", processed: true, bot_skipped: true }), {

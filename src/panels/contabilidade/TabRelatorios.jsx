@@ -44,9 +44,9 @@ const TabRelatorios = ({ data, setData, setTab }) => {
     <div>
       <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
         {[
-          { label: 'Receita Total', val: receita, icon: TrendingUp, color: C.green, sub: parseFloat(pctVar(receita, receitaAnt)) >= 0 ? `\u2191 ${pctVar(receita, receitaAnt)}% vs. m\u00eas ant.` : `\u2193 ${Math.abs(parseFloat(pctVar(receita, receitaAnt)))}% vs. m\u00eas ant.`, up: parseFloat(pctVar(receita, receitaAnt)) >= 0 },
-          { label: 'Despesas Operacionais', val: despesa, icon: TrendingDown, color: C.red, sub: parseFloat(pctVar(despesa, despesaAnt)) >= 0 ? `\u2191 ${pctVar(despesa, despesaAnt)}% vs. m\u00eas ant.` : `\u2193 ${Math.abs(parseFloat(pctVar(despesa, despesaAnt)))}% vs. m\u00eas ant.`, up: parseFloat(pctVar(despesa, despesaAnt)) >= 0 },
-          { label: 'Lucro L\u00edquido', val: lucro, icon: Target, color: lucro >= 0 ? C.green : C.red, sub: `Margem de ${receita > 0 ? ((lucro / receita) * 100).toFixed(0) : 0}%` },
+          { label: 'Receita Total', val: receita, icon: TrendingUp, color: C.green, sub: parseFloat(pctVar(receita, receitaAnt)) >= 0 ? `↑ ${pctVar(receita, receitaAnt)}% vs. mês ant.` : `↓ ${Math.abs(parseFloat(pctVar(receita, receitaAnt)))}% vs. mês ant.`, up: parseFloat(pctVar(receita, receitaAnt)) >= 0 },
+          { label: 'Despesas Operacionais', val: despesa, icon: TrendingDown, color: C.red, sub: parseFloat(pctVar(despesa, despesaAnt)) >= 0 ? `↑ ${pctVar(despesa, despesaAnt)}% vs. mês ant.` : `↓ ${Math.abs(parseFloat(pctVar(despesa, despesaAnt)))}% vs. mês ant.`, up: parseFloat(pctVar(despesa, despesaAnt)) >= 0 },
+          { label: 'Lucro Líquido', val: lucro, icon: Target, color: lucro >= 0 ? C.green : C.red, sub: `Margem de ${receita > 0 ? ((lucro / receita) * 100).toFixed(0) : 0}%` },
           { label: 'EBITDA', val: ebitda, icon: BarChart2, color: ebitda >= 0 ? C.green : C.red, sub: `Margem ${margemEbitda}%` }
         ].map(({ label, val, icon: Icon, color, sub, up }) => (
           <div key={label} style={{ ...s.card, flex: 1, minWidth: 180 }}>
@@ -77,19 +77,19 @@ const TabRelatorios = ({ data, setData, setTab }) => {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <div style={s.sectionTitle}>Desempenho de Margem</div>
             <div style={{ display: 'flex', gap: 6 }}>
-              {['todos', 'panifica\u00e7\u00e3o', 'pizzas', 'bebidas'].map(f => (
+              {['todos', 'panificação', 'pizzas', 'bebidas'].map(f => (
                 <button key={f} onClick={() => setMargFilter(f)} style={{ border: `1px solid ${margFilter === f ? C.primary : C.border}`, background: margFilter === f ? C.primary : '#fff', color: margFilter === f ? '#fff' : C.navyLight, borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>{f}</button>
               ))}
             </div>
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead><tr style={{ borderBottom: `1px solid ${C.border}` }}>{['', 'Nome do Prato', 'Categoria', 'Custo de Prod.', 'Pre\u00e7o de Venda', 'Margem (%)', 'A\u00e7\u00f5es'].map(h => <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 10, fontWeight: 700, color: C.navyLight, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{h}</th>)}</tr></thead>
+            <thead><tr style={{ borderBottom: `1px solid ${C.border}` }}>{['', 'Nome do Prato', 'Categoria', 'Custo de Prod.', 'Preço de Venda', 'Margem (%)', 'Ações'].map(h => <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 10, fontWeight: 700, color: C.navyLight, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{h}</th>)}</tr></thead>
             <tbody>
               {fichasFiltradas.map(f => {
                 const prod = data.produtos.find(p => p.id === f.produto_id);
                 return <tr key={f.id} style={{ borderBottom: `1px solid ${C.borderLight}` }}>
-                  <td style={{ padding: '10px 8px', fontSize: 20 }}>{prod?.emoji || '\ud83d\udce6'}</td>
-                  <td style={{ padding: '10px 8px' }}><div style={{ fontWeight: 600, color: C.navy }}>{prod?.nome || '\u2014'}</div><div style={{ fontSize: 11, color: C.navyLight }}>{prod?.descricao?.slice(0, 35) || 'Sem descri\u00e7\u00e3o'}...</div></td>
+                  <td style={{ padding: '10px 8px', fontSize: 20 }}>{prod?.emoji || '📦'}</td>
+                  <td style={{ padding: '10px 8px' }}><div style={{ fontWeight: 600, color: C.navy }}>{prod?.nome || '—'}</div><div style={{ fontSize: 11, color: C.navyLight }}>{prod?.descricao?.slice(0, 35) || 'Sem descrição'}...</div></td>
                   <td style={{ padding: '10px 8px' }}><Badge color='gray'>{prod?.categoria || 'Outros'}</Badge></td>
                   <td style={{ padding: '10px 8px', fontWeight: 600 }}>{fmtCurrency(f.custo_bruto_producao)}</td>
                   <td style={{ padding: '10px 8px', fontWeight: 700, color: C.navy }}>{fmtCurrency(f.valor_venda_unitario)}</td>
@@ -107,7 +107,7 @@ const TabRelatorios = ({ data, setData, setTab }) => {
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={s.card}>
-            <div style={s.sectionTitle}>\u00daltimas Transa\u00e7\u00f5es</div>
+            <div style={s.sectionTitle}>Últimas Transações</div>
             {mesTrans.slice(0, 5).map(t => (
               <div key={t.id} style={{ borderBottom: `1px solid ${C.borderLight}`, paddingBottom: 8, marginBottom: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ fontWeight: 600, color: C.navy, fontSize: 12 }}>{t.descricao}</span><span style={{ fontWeight: 700, fontSize: 12, color: t.tipo === 'receita' ? C.green : C.red }}>{t.tipo === 'receita' ? '+' : '-'}{fmtCurrency(t.valor)}</span></div>
@@ -117,10 +117,10 @@ const TabRelatorios = ({ data, setData, setTab }) => {
             <div style={{ textAlign: 'center', marginTop: 4 }}><button onClick={() => setTab('fluxo')} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 11, color: C.primary, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Ver todo o fluxo de caixa</button></div>
           </div>
           <div style={s.card}>
-            <div style={{ ...s.sectionTitle, marginBottom: 4 }}>Ponto de Equil\u00edbrio</div>
-            <div style={{ fontSize: 11, color: C.navyLight, marginBottom: 8 }}>Faturamento m\u00ednimo para cobrir despesas fixas</div>
+            <div style={{ ...s.sectionTitle, marginBottom: 4 }}>Ponto de Equilíbrio</div>
+            <div style={{ fontSize: 11, color: C.navyLight, marginBottom: 8 }}>Faturamento mínimo para cobrir despesas fixas</div>
             <div style={{ fontSize: 20, fontWeight: 800, color: C.navy }}>{fmtCurrency(despFixasMes)}</div>
-            <div style={{ fontSize: 11, color: receita >= despFixasMes ? C.green : C.red, fontWeight: 600, marginTop: 4 }}>{receita >= despFixasMes ? '\u2705 Acima do ponto de equil\u00edbrio' : '\u26a0\ufe0f Abaixo do ponto de equil\u00edbrio'}</div>
+            <div style={{ fontSize: 11, color: receita >= despFixasMes ? C.green : C.red, fontWeight: 600, marginTop: 4 }}>{receita >= despFixasMes ? '✅ Acima do ponto de equilíbrio' : '⚠️ Abaixo do ponto de equilíbrio'}</div>
           </div>
           <div style={s.card}>
             <div style={{ ...s.sectionTitle, marginBottom: 8 }}>Despesas por Carteira</div>

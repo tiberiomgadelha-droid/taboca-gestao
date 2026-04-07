@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════
 // SIDEBAR NAVIGATION (DESKTOP)
 // ═══════════════════════════════════════════════════
-import { Home, BookOpen, Package, ChefHat, Users, MessageSquare, Truck, Bot, Send, Settings, LogOut } from "lucide-react";
+import { Home, BookOpen, Package, ChefHat, Users, MessageSquare, Truck, Bot, Send, LogOut } from "lucide-react";
 import { C, TabocaLogo } from "./ui.jsx";
 
 const NAV_ITEMS = [
@@ -42,7 +42,7 @@ const Sidebar = ({active, setActive, unreadCount, onBot, onLogout}) => {
           </div>
         </div>
         <div style={{fontSize:10,fontWeight:800,color:C.navyLight,letterSpacing:'0.12em',textTransform:'uppercase',padding:'10px 8px 4px',marginTop:6}}>Comunicação</div>
-        {[{key:'campanhas',label:'Campanhas',icon:Send},{key:'canais',label:'Canais',icon:Settings}].map(({key,label,icon:Icon})=>(
+        {[{key:'campanhas',label:'Campanhas',icon:Send}].map(({key,label,icon:Icon})=>(
           <button key={key} onClick={()=>setActive(key)} style={{width:'100%',display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:8,border:'none',cursor:'pointer',background:active===key?C.amber:'transparent',color:active===key?'#fff':C.navyLight,fontWeight:active===key?700:500,fontSize:12,transition:'all 0.15s',marginBottom:1,textAlign:'left'}}>
             <Icon size={14} style={{flexShrink:0}}/><span>{label}</span>
           </button>

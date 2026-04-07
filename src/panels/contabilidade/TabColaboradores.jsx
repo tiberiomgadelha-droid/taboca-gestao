@@ -12,13 +12,25 @@ const TabColaboradores = ({ data, setData }) => {
   const [confirmPagColab, setConfirmPagColab] = useState(null);
 
   // Calcular valor acumulado de servico para cada colaborador baseado em producoes nao pagas
+  // Considera tanto o operador principal quanto as etapas atribuidas por colaborador
   const calcValorAcumulado = (col) => {
-    const producoesDoColab = data.producoes.filter(p => p.operador === col.nome && !p.pago_colaborador);
-    return producoesDoColab.reduce((total, prod) => {
+    let total = 0;
+    data.producoes.filter(p => !p.pago_colaborador).forEach(prod => {
       const ficha = data.fichas.find(f => f.produto_id === prod.produto_id);
-      const custoMO = ficha ? ficha.custo_mao_obra * prod.quantidade : (col.valor_por_fornada || 0);
-      return total + custoMO;
-    }, 0);
+      if (prod.etapas_producao?.length > 0) {
+        // Acumula por etapas atribuidas ao colaborador
+        prod.etapas_producao.forEach(et => {
+          if (et.colaborador === col.nome) {
+            const etapaFicha = ficha?.etapas?.find(e => e.nome === et.etapa_nome);
+            total += (etapaFicha?.valor_servico || 0) * prod.quantidade;
+          }
+        });
+      } else if (prod.operador === col.nome) {
+        // Fallback: sem etapas detalhadas, usa custo_mao_obra total
+        total += ficha ? ficha.custo_mao_obra * prod.quantidade : (col.valor_por_fornada || 0);
+      }
+    });
+    return total;
   };
 
   const saveColab = async () => {
@@ -52,14 +64,14 @@ const TabColaboradores = ({ data, setData }) => {
       descricao: `Pagamento colaborador — ${col.nome}`,
       data: new Date().toISOString().slice(0, 16),
       conta: 'PIX',
-      categoria: 'Custo de Produ\u00e7\u00e3o',
+      categoria: 'Custo de Produção',
       tipo: 'despesa',
       valor: valorAcum
     };
     setData(prev => ({
       ...prev,
       transactions: [transacao, ...prev.transactions],
-      producoes: prev.producoes.map(p => p.operador === col.nome && !p.pago_colaborador ? { ...p, pago_colaborador: true } : p),
+      producoes: prev.producoes.map(p => !p.pago_colaborador && (p.operador === col.nome || p.etapas_producao?.some(et => et.colaborador === col.nome)) ? { ...p, pago_colaborador: true } : p),
       activityLog: [{
         id: Date.now() + 1, tipo: 'transacao',
         descricao: `Pagamento ${col.nome} — ${fmtCurrency(valorAcum)}`,
@@ -68,9 +80,9 @@ const TabColaboradores = ({ data, setData }) => {
     }));
     sbInsert('transactions', { descricao: transacao.descricao, data: transacao.data, conta: transacao.conta, categoria: transacao.categoria, tipo: transacao.tipo, valor: transacao.valor }).catch(console.error);
     // Mark producoes as paid in Supabase
-    data.producoes.filter(p => p.operador === col.nome && !p.pago_colaborador).forEach(p => sbUpdate('producoes', p.id, { pago_colaborador: true }).catch(console.error));
+    data.producoes.filter(p => !p.pago_colaborador && (p.operador === col.nome || p.etapas_producao?.some(et => et.colaborador === col.nome))).forEach(p => sbUpdate('producoes', p.id, { pago_colaborador: true }).catch(console.error));
     setConfirmPagColab(null);
-    logActivity(setData, 'colaborador', `Pagamento lan\u00e7ado: ${col.nome} — ${fmtCurrency(valorAcum)}`);
+    logActivity(setData, 'colaborador', `Pagamento lançado: ${col.nome} — ${fmtCurrency(valorAcum)}`);
   };
 
   return (
@@ -82,13 +94,14 @@ const TabColaboradores = ({ data, setData }) => {
       {data.colaboradores.length === 0 && <div style={{ ...s.card, textAlign: 'center', padding: 40, color: C.navyLight }}>Nenhum colaborador cadastrado. Clique em "Novo Colaborador" para adicionar.</div>}
       {data.colaboradores.map(col => {
         const valorAcum = calcValorAcumulado(col);
-        const fornadasNaoPagas = data.producoes.filter(p => p.operador === col.nome && !p.pago_colaborador).length;
-        const fornadasMes = data.producoes.filter(p => p.operador === col.nome && p.data.startsWith('2026-03')).length;
+        const fornadasNaoPagas = data.producoes.filter(p => !p.pago_colaborador && (p.operador === col.nome || p.etapas_producao?.some(et => et.colaborador === col.nome))).length;
+        const mesAtualStr = new Date().toISOString().slice(0,7);
+        const fornadasMes = data.producoes.filter(p => p.data.startsWith(mesAtualStr) && (p.operador === col.nome || p.etapas_producao?.some(et => et.colaborador === col.nome))).length;
         return (
           <div key={col.id} style={{ ...s.card, marginBottom: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                {col.foto_url ? <img src={col.foto_url} style={{ width: 40, height: 40, borderRadius: 20, objectFit: 'cover' }} /> : <div style={{ width: 40, height: 40, borderRadius: 20, background: '#FEF3EA', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>{'\ud83d\udc68\u200d\ud83c\udf73'}</div>}
+                {col.foto_url ? <img src={col.foto_url} style={{ width: 40, height: 40, borderRadius: 20, objectFit: 'cover' }} /> : <div style={{ width: 40, height: 40, borderRadius: 20, background: '#FEF3EA', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>{'👨‍🍳'}</div>}
                 <div>
                   <div style={{ fontWeight: 700, color: C.navy }}>{col.nome}</div>
                   <div style={{ fontSize: 11, color: C.navyLight }}>{col.funcao}{col.whatsapp ? ` — ${col.whatsapp}` : ''}{col.email ? ` — ${col.email}` : ''}</div>
@@ -102,15 +115,15 @@ const TabColaboradores = ({ data, setData }) => {
             </div>
             <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10, alignItems: 'center' }}>
               <div style={{ padding: 12, background: '#F9F6F4', borderRadius: 8, fontSize: 12, color: C.navyLight }}>
-                Fornadas no m\u00eas: <strong style={{ color: C.navy }}>{fornadasMes}</strong>
-                {fornadasNaoPagas > 0 && <span> ({fornadasNaoPagas} n\u00e3o pagas)</span>}
+                Fornadas no mês: <strong style={{ color: C.navy }}>{fornadasMes}</strong>
+                {fornadasNaoPagas > 0 && <span> ({fornadasNaoPagas} não pagas)</span>}
               </div>
               <div style={{ padding: 12, background: valorAcum > 0 ? '#FEF3EA' : '#F9F6F4', borderRadius: 8, fontSize: 12 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: C.navyLight, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Valor Acumulado de Servi\u00e7o</div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: C.navyLight, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Valor Acumulado de Serviço</div>
                 <div style={{ fontSize: 18, fontWeight: 800, color: valorAcum > 0 ? C.primary : C.navyLight }}>{fmtCurrency(valorAcum)}</div>
               </div>
               <button onClick={() => { if (valorAcum > 0) setConfirmPagColab(col); }} disabled={valorAcum <= 0} style={{ ...s.btn, background: valorAcum > 0 ? C.green : '#ccc', opacity: valorAcum > 0 ? 1 : 0.5, fontSize: 12, padding: '10px 16px', cursor: valorAcum > 0 ? 'pointer' : 'not-allowed' }}>
-                <DollarSign size={14} />Lan\u00e7ar Pagamento
+                <DollarSign size={14} />Lançar Pagamento
               </button>
             </div>
           </div>
@@ -121,16 +134,16 @@ const TabColaboradores = ({ data, setData }) => {
       <Modal open={!!editColab} onClose={() => setEditColab(null)} title={editColab?.id && data.colaboradores.find(c => c.id === editColab?.id) ? 'Editar Colaborador' : 'Novo Colaborador'} subtitle="Preencha os dados do colaborador" width={460}>
         {editColab && <div>
           <FormField label="Nome" required><Input value={editColab.nome} onChange={e => setEditColab({ ...editColab, nome: e.target.value })} placeholder="Nome completo" /></FormField>
-          <FormField label="Fun\u00e7\u00e3o" required><Input value={editColab.funcao} onChange={e => setEditColab({ ...editColab, funcao: e.target.value })} placeholder="Ex: Produtor, Entregador..." /></FormField>
+          <FormField label="Função" required><Input value={editColab.funcao} onChange={e => setEditColab({ ...editColab, funcao: e.target.value })} placeholder="Ex: Produtor, Entregador..." /></FormField>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <FormField label="E-mail"><Input type="email" value={editColab.email || ''} onChange={e => setEditColab({ ...editColab, email: e.target.value })} placeholder="email@exemplo.com" /></FormField>
             <FormField label="WhatsApp"><Input value={editColab.whatsapp || ''} onChange={e => setEditColab({ ...editColab, whatsapp: e.target.value })} placeholder="55 (73) 9XXXX-XXXX" /></FormField>
           </div>
           <FormField label="Foto (URL)"><Input value={editColab.foto_url || ''} onChange={e => setEditColab({ ...editColab, foto_url: e.target.value })} placeholder="https://..." /></FormField>
           <div style={{ padding: 10, background: '#F9F6F4', borderRadius: 8, marginBottom: 14 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.navyLight, textTransform: 'uppercase', marginBottom: 4 }}>Valor Acumulado de Servi\u00e7o</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.navyLight, textTransform: 'uppercase', marginBottom: 4 }}>Valor Acumulado de Serviço</div>
             <div style={{ fontSize: 18, fontWeight: 800, color: C.primary }}>{fmtCurrency(editColab?.id ? calcValorAcumulado(editColab) : 0)}</div>
-            <div style={{ fontSize: 10, color: C.navyLight, marginTop: 2 }}>Calculado automaticamente a partir das produ\u00e7\u00f5es lan\u00e7adas. Zerado ao lan\u00e7ar pagamento.</div>
+            <div style={{ fontSize: 10, color: C.navyLight, marginTop: 2 }}>Calculado automaticamente a partir das produções lançadas. Zerado ao lançar pagamento.</div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
             <label style={{ fontSize: 12, fontWeight: 600, color: C.navy, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -151,7 +164,7 @@ const TabColaboradores = ({ data, setData }) => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
             <div style={{ width: 40, height: 40, borderRadius: 20, background: C.greenLight, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><DollarSign size={20} color={C.green} /></div>
             <div>
-              <div style={{ fontWeight: 700, color: C.navy, fontSize: 15 }}>Lan\u00e7ar Pagamento</div>
+              <div style={{ fontWeight: 700, color: C.navy, fontSize: 15 }}>Lançar Pagamento</div>
               <div style={{ fontSize: 12, color: C.navyLight }}>Confirme o pagamento ao colaborador</div>
             </div>
           </div>
@@ -161,8 +174,8 @@ const TabColaboradores = ({ data, setData }) => {
               <span style={{ fontSize: 12, fontWeight: 700, color: C.navy }}>{confirmPagColab.nome}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontSize: 12, color: C.navyLight }}>Fornadas n\u00e3o pagas:</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: C.navy }}>{data.producoes.filter(p => p.operador === confirmPagColab.nome && !p.pago_colaborador).length}</span>
+              <span style={{ fontSize: 12, color: C.navyLight }}>Fornadas não pagas:</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: C.navy }}>{data.producoes.filter(p => !p.pago_colaborador && (p.operador === confirmPagColab.nome || p.etapas_producao?.some(et => et.colaborador === confirmPagColab.nome))).length}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${C.border}`, paddingTop: 8, marginTop: 4 }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>Valor Total:</span>
@@ -170,7 +183,7 @@ const TabColaboradores = ({ data, setData }) => {
             </div>
           </div>
           <div style={{ fontSize: 11, color: C.navyLight, marginBottom: 12, padding: '8px 10px', background: '#FEF3EA', borderRadius: 6 }}>
-            Ao confirmar, uma despesa de "Custo Servi\u00e7o" ser\u00e1 lan\u00e7ada no Fluxo de Caixa e o valor acumulado ser\u00e1 zerado.
+            Ao confirmar, uma despesa de "Custo Serviço" será lançada no Fluxo de Caixa e o valor acumulado será zerado.
           </div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
             <Btn variant='outline' onClick={() => setConfirmPagColab(null)}>Cancelar</Btn>
@@ -184,7 +197,7 @@ const TabColaboradores = ({ data, setData }) => {
         <div style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 380, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }} onClick={e => e.stopPropagation()}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
             <div style={{ width: 36, height: 36, borderRadius: 18, background: C.redLight, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><AlertTriangle size={18} color={C.red} /></div>
-            <div><div style={{ fontWeight: 700, color: C.navy }}>Excluir Colaborador?</div><div style={{ fontSize: 12, color: C.navyLight }}>Esta a\u00e7\u00e3o n\u00e3o pode ser desfeita.</div></div>
+            <div><div style={{ fontWeight: 700, color: C.navy }}>Excluir Colaborador?</div><div style={{ fontSize: 12, color: C.navyLight }}>Esta ação não pode ser desfeita.</div></div>
           </div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
             <Btn variant='outline' onClick={() => setConfirmDeleteColab(null)}>Cancelar</Btn>

@@ -30,7 +30,7 @@ const TabFluxo = ({ data, setData, openModal, fluxoFiltros, setFluxoFiltros }) =
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div style={s.sectionTitle}>Fluxo de Caixa</div>
-        <Btn onClick={() => openModal('novaTransacao')} size='sm'><Plus size={13} />Nova Transa\u00e7\u00e3o</Btn>
+        <Btn onClick={() => openModal('novaTransacao')} size='sm'><Plus size={13} />Nova Transação</Btn>
       </div>
       {/* Grafico */}
       <div style={{ marginBottom: 16, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
@@ -44,7 +44,7 @@ const TabFluxo = ({ data, setData, openModal, fluxoFiltros, setFluxoFiltros }) =
       {/* Barra de filtros */}
       <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, padding: '12px 16px', marginBottom: 12, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <div style={{ minWidth: 130 }}>
-          <label style={{ ...s.label, marginBottom: 3 }}>Data In\u00edcio</label>
+          <label style={{ ...s.label, marginBottom: 3 }}>Data Início</label>
           <input type="date" value={fluxoFiltros.dataInicio} onChange={e => setFluxoFiltros(f => ({ ...f, dataInicio: e.target.value }))} style={{ ...s.input, padding: '6px 10px', fontSize: 12 }} />
         </div>
         <div style={{ minWidth: 130 }}>
@@ -65,7 +65,7 @@ const TabFluxo = ({ data, setData, openModal, fluxoFiltros, setFluxoFiltros }) =
             <option value="todas">Todas</option>
             <option value="Caixa">Caixa</option>
             <option value="PIX">PIX</option>
-            <option value="Cart\u00e3o">Cart\u00e3o</option>
+            <option value="Cartão">Cartão</option>
           </select>
         </div>
         <div style={{ minWidth: 140 }}>
@@ -79,7 +79,7 @@ const TabFluxo = ({ data, setData, openModal, fluxoFiltros, setFluxoFiltros }) =
           <label style={{ ...s.label, marginBottom: 3 }}>Buscar</label>
           <div style={{ position: 'relative' }}>
             <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: C.navyLight }} />
-            <input value={fluxoFiltros.busca} onChange={e => setFluxoFiltros(f => ({ ...f, busca: e.target.value }))} placeholder="Pesquisar descri\u00e7\u00e3o..." style={{ ...s.input, padding: '6px 10px 6px 28px', fontSize: 12 }} />
+            <input value={fluxoFiltros.busca} onChange={e => setFluxoFiltros(f => ({ ...f, busca: e.target.value }))} placeholder="Pesquisar descrição..." style={{ ...s.input, padding: '6px 10px 6px 28px', fontSize: 12 }} />
           </div>
         </div>
         <button onClick={limparFiltros} style={{ border: `1px solid ${C.border}`, background: '#fff', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: C.navyLight, display: 'flex', alignItems: 'center', gap: 4, height: 34 }}><X size={12} />Limpar</button>
@@ -102,9 +102,9 @@ const TabFluxo = ({ data, setData, openModal, fluxoFiltros, setFluxoFiltros }) =
       {/* Tabela de transacoes */}
       <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead style={{ background: '#F9F6F4' }}><tr>{['Data', 'Descri\u00e7\u00e3o', 'Conta', 'Categoria', 'Tipo', 'Valor'].map(h => <th key={h} style={{ textAlign: 'left', padding: '10px 14px', fontSize: 11, fontWeight: 700, color: C.navyLight, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{h}</th>)}</tr></thead>
+          <thead style={{ background: '#F9F6F4' }}><tr>{['Data', 'Descrição', 'Conta', 'Categoria', 'Tipo', 'Valor'].map(h => <th key={h} style={{ textAlign: 'left', padding: '10px 14px', fontSize: 11, fontWeight: 700, color: C.navyLight, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{h}</th>)}</tr></thead>
           <tbody>
-            {transacoesFiltradas.length === 0 && <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center', color: C.navyLight, fontSize: 13 }}>Nenhuma transa\u00e7\u00e3o encontrada com os filtros aplicados.</td></tr>}
+            {transacoesFiltradas.length === 0 && <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center', color: C.navyLight, fontSize: 13 }}>Nenhuma transação encontrada com os filtros aplicados.</td></tr>}
             {transacoesFiltradas.map(t => (
               <tr key={t.id} style={{ borderBottom: `1px solid ${C.borderLight}` }}>
                 <td style={{ padding: '10px 14px', color: C.navyLight, fontSize: 12 }}>{fmtDate(t.data)}</td>
@@ -117,7 +117,7 @@ const TabFluxo = ({ data, setData, openModal, fluxoFiltros, setFluxoFiltros }) =
             ))}
           </tbody>
         </table>
-        <div style={{ padding: '8px 14px', fontSize: 11, color: C.navyLight, borderTop: `1px solid ${C.borderLight}` }}>{transacoesFiltradas.length} transa\u00e7\u00e3o(\u00f5es) encontrada(s)</div>
+        <div style={{ padding: '8px 14px', fontSize: 11, color: C.navyLight, borderTop: `1px solid ${C.borderLight}` }}>{transacoesFiltradas.length} transação(ões) encontrada(s)</div>
       </div>
     </div>
   );

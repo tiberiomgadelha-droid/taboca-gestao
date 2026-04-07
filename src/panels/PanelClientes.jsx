@@ -11,6 +11,7 @@ const PanelClientes = ({data, setData, openModal, isMobile}) => {
   const [dragItem, setDragItem] = useState(null);
   const [editCliente, setEditCliente] = useState(null);
   const [mapsOpen, setMapsOpen] = useState(false);
+  const [filtroCanal, setFiltroCanal] = useState('todos');
 
   const ticketMedio = useMemo(() => {
     const totals = {};
@@ -233,7 +234,12 @@ const PanelClientes = ({data, setData, openModal, isMobile}) => {
 
       {view==='grupos'&&(
         <div>
-          <div style={{fontSize:12,color:C.navyLight,marginBottom:12}}>💡 Arraste os clientes entre as colunas para mover de grupo.</div>
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+            <span style={{fontSize:12,color:C.navyLight}}>Filtrar:</span>
+            {[{k:'todos',l:'Todos'},{k:'whatsapp',l:'WhatsApp'},{k:'instagram',l:'Instagram'}].map(({k,l})=>(
+              <button key={k} onClick={()=>setFiltroCanal(k)} style={{border:`1px solid ${filtroCanal===k?C.primary:C.border}`,background:filtroCanal===k?C.primary:'#fff',color:filtroCanal===k?'#fff':C.navyLight,borderRadius:6,padding:'4px 10px',cursor:'pointer',fontSize:11,fontWeight:600}}>{l}</button>
+            ))}
+          </div>
           <div style={{display:'flex',gap:12,overflowX:'auto',paddingBottom:8}}>
             {data.grupos.map(grupo=>(
               <div key={grupo.id} style={{minWidth:200,flex:1,background:dragOver===grupo.id?'#FEF3EA':'#F9F6F4',borderRadius:10,padding:12,border:`2px dashed ${dragOver===grupo.id?C.primary:C.border}`,transition:'all 0.15s'}} onDragOver={e=>{e.preventDefault();setDragOver(grupo.id);}} onDragLeave={()=>setDragOver(null)} onDrop={e=>handleDrop(e,grupo.id)}>
@@ -244,8 +250,11 @@ const PanelClientes = ({data, setData, openModal, isMobile}) => {
                 <div style={{fontSize:10,color:C.navyLight,marginBottom:10}}>{grupo.descricao}</div>
                 {grupo.lista_cliente_ids.map(cid=>{
                   const c=data.clientes.find(cl=>cl.id===cid);
-                  const dias = c?(diasSemComprarMap[cid]??null):null;
-                  return c?<div key={cid} draggable onDragStart={()=>setDragItem({clienteId:cid,grupoAntigoId:grupo.id})} style={{background:'#fff',borderRadius:7,padding:'8px 10px',marginBottom:6,cursor:'grab',border:`1px solid ${C.border}`,boxShadow:'0 1px 3px rgba(0,0,0,0.05)',userSelect:'none'}}>
+                  if(!c) return null;
+                  if(filtroCanal==='whatsapp' && !c.whatsapp) return null;
+                  if(filtroCanal==='instagram' && !c.instagram) return null;
+                  const dias = diasSemComprarMap[cid]??null;
+                  return <div key={cid} draggable onDragStart={()=>setDragItem({clienteId:cid,grupoAntigoId:grupo.id})} style={{background:'#fff',borderRadius:7,padding:'8px 10px',marginBottom:6,cursor:'grab',border:`1px solid ${C.border}`,boxShadow:'0 1px 3px rgba(0,0,0,0.05)',userSelect:'none'}}>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                       <div style={{fontWeight:600,color:C.navy,fontSize:12}}>{c.nome}</div>
                       <button onClick={()=>setEditCliente({...c})} style={{border:'none',background:'none',cursor:'pointer',padding:2}}><Edit size={11} color={C.navyLight}/></button>
@@ -253,7 +262,7 @@ const PanelClientes = ({data, setData, openModal, isMobile}) => {
                     <div style={{fontSize:10,color:C.navyLight}}>{c.whatsapp}</div>
                     {dias!==null&&<div style={{fontSize:9,color:dias>14?C.red:dias>7?C.yellow:C.green,fontWeight:600,marginTop:3}}>🕐 há {dias} dias sem comprar</div>}
                     {c.preferencias&&<div style={{fontSize:9,color:C.primary,marginTop:2}}>⭐ {c.preferencias.slice(0,30)}</div>}
-                  </div>:null;
+                  </div>;
                 })}
                 {grupo.lista_cliente_ids.length===0&&<div style={{textAlign:'center',color:C.navyLight,fontSize:11,padding:10}}>Nenhum cliente</div>}
               </div>

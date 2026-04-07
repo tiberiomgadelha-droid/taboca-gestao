@@ -53,7 +53,7 @@ const TabBalanco = ({ data, setData }) => {
     <div>
       <div style={{ ...s.card, marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div><div style={{ fontSize: 16, fontWeight: 800, color: C.navy }}>Balan\u00e7o Patrimonial — Mar\u00e7o 2026</div><div style={{ fontSize: 11, color: C.navyLight }}>Demonstrativo completo da situa\u00e7\u00e3o patrimonial, DRE e EBITDA.</div></div>
+          <div><div style={{ fontSize: 16, fontWeight: 800, color: C.navy }}>Balanço Patrimonial — Março 2026</div><div style={{ fontSize: 11, color: C.navyLight }}>Demonstrativo completo da situação patrimonial, DRE e EBITDA.</div></div>
         </div>
       </div>
 
@@ -84,16 +84,16 @@ const TabBalanco = ({ data, setData }) => {
         {/* PASSIVOS + PL */}
         <div style={{ ...s.card, padding: 0, overflow: 'hidden' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', borderBottom: `1px solid ${C.border}`, background: '#FEF2F2' }}>
-            <span style={{ fontWeight: 800, color: C.red, fontSize: 13 }}>PASSIVO + PATRIM\u00d4NIO L\u00cdQUIDO</span><span style={{ fontSize: 10, fontWeight: 700, color: C.navyLight, letterSpacing: '0.1em' }}>OBRIGA\u00c7\u00d5ES</span>
+            <span style={{ fontWeight: 800, color: C.red, fontSize: 13 }}>PASSIVO + PATRIMÔNIO LÍQUIDO</span><span style={{ fontSize: 10, fontWeight: 700, color: C.navyLight, letterSpacing: '0.1em' }}>OBRIGAÇÕES</span>
           </div>
           <div style={{ padding: '12px 18px' }}>
             {[
               { label: 'Passivo Circulante', valor: impostosPagar, bold: true },
               { label: 'Impostos a Pagar', valor: impostosPagar },
               { label: 'Fornecedores', valor: 0 },
-              { label: 'Patrim\u00f4nio L\u00edquido', valor: patrimonioLiq, bold: true, highlight: true },
+              { label: 'Patrimônio Líquido', valor: patrimonioLiq, bold: true, highlight: true },
               { label: 'Capital Social', valor: data.settings.capital_social },
-              { label: 'Lucros/Preju\u00edzos Acumulados', valor: lucroAcumulado, neg: true },
+              { label: 'Lucros/Prejuízos Acumulados', valor: lucroAcumulado, neg: true },
             ].map((item, i) => <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: item.bold ? `1px solid ${C.borderLight}` : 'none' }}>
               <span style={{ fontSize: 12, fontWeight: item.bold ? 700 : 400, color: item.highlight ? C.primary : C.navy }}>{item.label}</span>
               <span style={{ fontSize: 12, fontWeight: item.bold ? 700 : 400, color: item.neg ? (item.valor < 0 ? C.red : C.green) : C.navy }}>{fmtCurrency(item.valor)}</span>
@@ -108,18 +108,18 @@ const TabBalanco = ({ data, setData }) => {
 
       {/* DRE SIMPLIFICADO */}
       <div style={{ ...s.card, marginBottom: 20 }}>
-        <div style={s.sectionTitle}>DRE — Demonstra\u00e7\u00e3o do Resultado (Mar\u00e7o 2026)</div>
+        <div style={s.sectionTitle}>DRE — Demonstração do Resultado (Março 2026)</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 0 }}>
           {[
             { label: '(+) Receita Bruta', valor: receitaBruta, color: C.green, bold: true },
-            { label: '(-) Dedu\u00e7\u00f5es (Impostos sobre venda)', valor: -deducoes, color: C.red },
-            { label: '(=) Receita L\u00edquida', valor: receitaLiquida, bold: true, sep: true },
-            { label: '(-) Custo dos Produtos Vendidos (Insumos + Servi\u00e7o)', valor: -cpv, color: C.red },
+            { label: '(-) Deduções (Impostos sobre venda)', valor: -deducoes, color: C.red },
+            { label: '(=) Receita Líquida', valor: receitaLiquida, bold: true, sep: true },
+            { label: '(-) Custo dos Produtos Vendidos (Insumos + Serviço)', valor: -cpv, color: C.red },
             { label: '(=) Lucro Bruto', valor: lucroBruto, bold: true, sep: true },
             { label: '(-) Despesas Operacionais (Admin + Marketing)', valor: -despOp, color: C.red },
             { label: '(=) EBITDA', valor: ebitda, bold: true, highlight: true, sep: true },
             { label: '(-) Impostos e Taxas', valor: -impostosTotal, color: C.red },
-            { label: '(=) Lucro L\u00edquido', valor: lucroLiquido, bold: true, highlight: true, sep: true },
+            { label: '(=) Lucro Líquido', valor: lucroLiquido, bold: true, highlight: true, sep: true },
           ].map((item, i) => (
             <div key={i} style={{ display: 'contents' }}>
               <div style={{ padding: '8px 12px', fontWeight: item.bold ? 700 : 400, fontSize: 13, color: item.highlight ? C.primary : C.navy, borderTop: item.sep ? `2px solid ${C.border}` : 'none', background: item.highlight ? '#FEF3EA' : 'transparent' }}>{item.label}</div>
@@ -133,14 +133,14 @@ const TabBalanco = ({ data, setData }) => {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 16 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ ...s.card, background: ebitda >= 0 ? '#F0FDF4' : '#FEF2F2', borderLeft: `4px solid ${ebitda >= 0 ? C.green : C.red}` }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.navyLight, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>EBITDA do M\u00eas</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.navyLight, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>EBITDA do Mês</div>
             <div style={{ fontSize: 28, fontWeight: 800, color: ebitda >= 0 ? C.green : C.red }}>{fmtCurrency(ebitda)}</div>
             <div style={{ fontSize: 12, color: C.navyLight, marginTop: 4 }}>Margem: <strong style={{ color: ebitda >= 0 ? C.green : C.red }}>{margemEbitda}%</strong></div>
           </div>
           <div style={s.card}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.navyLight, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Proje\u00e7\u00e3o do M\u00eas</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.navyLight, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Projeção do Mês</div>
             <div style={{ fontSize: 20, fontWeight: 800, color: C.navy }}>{fmtCurrency(projecaoFaturamento)}</div>
-            <div style={{ fontSize: 11, color: C.navyLight, marginTop: 4 }}>Baseado na m\u00e9dia dos primeiros {diasPassados} dias</div>
+            <div style={{ fontSize: 11, color: C.navyLight, marginTop: 4 }}>Baseado na média dos primeiros {diasPassados} dias</div>
             <div style={{ marginTop: 6, height: 6, background: C.borderLight, borderRadius: 3 }}>
               <div style={{ height: 6, width: `${Math.min((projecaoFaturamento / data.settings.meta_faturamento) * 100, 100)}%`, background: projecaoFaturamento >= data.settings.meta_faturamento ? C.green : C.amber, borderRadius: 3 }} />
             </div>

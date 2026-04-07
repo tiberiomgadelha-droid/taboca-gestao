@@ -27,7 +27,7 @@ export const mapCatCarteira = (cat) => {
   if (!cat) return 'Custo Administrativo';
   const c = cat.toLowerCase();
   if (c.includes('imposto') || c.includes('taxa') || c.includes('mei')) return 'Impostos e Taxas';
-  if (c.includes('perda') || c.includes('prejuízo') || c.includes('vencid') || c.includes('avaria')) return 'Percas e Prejuízos';
+  if (c.includes('perda') || c.includes('prejuízo') || c.includes('vencid') || c.includes('avaria')) return 'Perdas e Prejuízos';
   if (c.includes('insumo') || c.includes('farinha') || c.includes('ovo') || c === 'insumos') return 'Custo Insumos';
   if (c.includes('serviço') || c.includes('colaborad') || c.includes('frete') || c.includes('salário') || c.includes('salarios') || c === 'custo de produção') return 'Custo Serviço';
   if (c.includes('admin') || c.includes('aluguel') || c.includes('internet') || c.includes('manutenção')) return 'Custo Administrativo';
@@ -42,7 +42,7 @@ export const CARTEIRAS_RECEITA = ['Caixa', 'PIX', 'Cartão'];
 
 export const CARTEIRAS_DESPESA = [
   { nome: 'Impostos e Taxas', desc: 'MEI, ICMS, taxas' },
-  { nome: 'Percas e Prejuízos', desc: 'Produtos vencidos, avarias' },
+  { nome: 'Perdas e Prejuízos', desc: 'Produtos vencidos, avarias' },
   { nome: 'Custo Insumos', desc: 'Farinha, ovos, gás etc' },
   { nome: 'Custo Serviço', desc: 'Colaboradores, frete, entregas' },
   { nome: 'Custo Administrativo', desc: 'Aluguel, internet, contador' },

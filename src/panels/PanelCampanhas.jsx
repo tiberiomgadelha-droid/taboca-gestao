@@ -83,7 +83,7 @@ const PanelCampanhas = ({data, setData}) => {
             <div style={{display:'flex',gap:8,marginBottom:8}}>
               <button onClick={gerarMensagemIA} disabled={aiLoading} style={{...s.btnSm,background:C.amber}}>{aiLoading?<Loader size={12}/>:<Bot size={12}/>} Gerar com IA</button>
             </div>
-            <Textarea value={campForm.mensagem} onChange={e=>setCampForm(f=>({...f,mensagem:e.target.value}))} placeholder="Escreva a mensagem ou gere com IA..." rows={5}/>
+            <Textarea value={campForm.mensagem} onChange={e=>setCampForm(f=>({...f,mensagem:e.target.value}))} placeholder="Escreva a mensagem ou gere com IA..." rows={12}/>
           </FormField>
           <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
             <Btn variant='outline' onClick={()=>setShowNew(false)}>Cancelar</Btn>

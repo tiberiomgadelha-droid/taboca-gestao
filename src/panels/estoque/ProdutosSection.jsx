@@ -383,7 +383,35 @@ const ProdutosSection = ({
               <Input value={et.nome} onChange={e=>{const ne=[...fichaForm.etapas];ne[i]={...ne[i],nome:e.target.value};setFichaForm(f=>({...f,etapas:ne}));}} placeholder="Nome da etapa"/>
               <Input type="number" value={et.valor_servico} onChange={e=>{const ne=[...fichaForm.etapas];ne[i]={...ne[i],valor_servico:parseFloat(e.target.value)||0};setFichaForm(f=>({...f,etapas:ne}));}} placeholder="R$ serviço" step="0.10"/>
             </div>
-            <Input value={et.foto_url||''} onChange={e=>{const ne=[...fichaForm.etapas];ne[i]={...ne[i],foto_url:e.target.value};setFichaForm(f=>({...f,etapas:ne}));}} placeholder="URL foto/vídeo (opcional)" style={{marginBottom:6,fontSize:11}}/>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+              {et.foto_url ? (
+                <div style={{display:'flex',alignItems:'center',gap:6,flex:1}}>
+                  {/\.(mp4|webm|mov)$/i.test(et.foto_url) ? (
+                    <video src={et.foto_url} controls style={{maxWidth:120,maxHeight:80,borderRadius:6}}/>
+                  ) : (
+                    <img src={et.foto_url} style={{maxWidth:80,maxHeight:60,borderRadius:6,objectFit:'cover'}} onError={e=>e.target.style.display='none'}/>
+                  )}
+                  <button onClick={()=>{const ne=[...fichaForm.etapas];ne[i]={...ne[i],foto_url:''};setFichaForm(f=>({...f,etapas:ne}));}} style={{border:'none',background:'none',cursor:'pointer'}}><X size={14} color={C.red}/></button>
+                </div>
+              ) : (
+                <label style={{...s.btnSm,background:C.amber,cursor:'pointer',fontSize:11,display:'flex',alignItems:'center',gap:4}}>
+                  <Plus size={12}/>Enviar Foto/Video
+                  <input type="file" accept="image/*,video/*" style={{display:'none'}} onChange={async (ev)=>{
+                    const file = ev.target.files?.[0];
+                    if(!file) return;
+                    try {
+                      const { supabase } = await import('../../utils/supabase.js');
+                      const ext = file.name.split('.').pop();
+                      const path = `etapas/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+                      const { error } = await supabase.storage.from('fichas-media').upload(path, file, {contentType: file.type});
+                      if(error) { alert('Erro no upload: '+error.message); return; }
+                      const { data: urlData } = supabase.storage.from('fichas-media').getPublicUrl(path);
+                      const ne=[...fichaForm.etapas];ne[i]={...ne[i],foto_url:urlData.publicUrl};setFichaForm(f=>({...f,etapas:ne}));
+                    } catch(err) { alert('Erro: '+err.message); }
+                  }}/>
+                </label>
+              )}
+            </div>
             <Textarea value={et.descricao||''} onChange={e=>{const ne=[...fichaForm.etapas];ne[i]={...ne[i],descricao:e.target.value};setFichaForm(f=>({...f,etapas:ne}));}} placeholder="Descrição da etapa..." rows={2}/>
           </div>
         ))}
@@ -457,7 +485,7 @@ const ProdutosSection = ({
                   {et.valor_servico>0&&<span style={{fontSize:11,fontWeight:700,color:C.green}}>{fmtCurrency(et.valor_servico)}</span>}
                 </div>
                 {et.descricao&&<div style={{fontSize:12,color:C.navy,lineHeight:1.6}}>{et.descricao}</div>}
-                {et.foto_url&&<img src={et.foto_url} style={{marginTop:6,maxWidth:'100%',maxHeight:120,borderRadius:6,objectFit:'cover'}} onError={e=>e.target.style.display='none'}/>}
+                {et.foto_url&&(/\.(mp4|webm|mov)$/i.test(et.foto_url) ? <video src={et.foto_url} controls style={{marginTop:6,maxWidth:'100%',maxHeight:200,borderRadius:6}}/> : <img src={et.foto_url} style={{marginTop:6,maxWidth:'100%',maxHeight:120,borderRadius:6,objectFit:'cover'}} onError={e=>e.target.style.display='none'}/>)}
               </div>
             ))}
             <div style={{textAlign:'right',fontSize:12,fontWeight:700,color:C.navy}}>Total Mão de Obra: {fmtCurrency(ficha.custo_mao_obra)}</div>

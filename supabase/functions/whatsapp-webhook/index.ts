@@ -304,7 +304,7 @@ async function findOrCreateCliente(supabase: any, phone: string, nome: string): 
     };
   }
 
-  // Criar novo cliente
+  // Criar novo cliente + grupo "potenciais clientes"
   const { data: newClient, error } = await supabase
     .from('clientes')
     .insert({
@@ -313,6 +313,7 @@ async function findOrCreateCliente(supabase: any, phone: string, nome: string): 
       data_cadastro: new Date().toISOString().split('T')[0],
       bot_ativo: true,
       preferencia_audio: false,
+      grupo_id: 1,
     })
     .select('id')
     .single();
@@ -322,7 +323,15 @@ async function findOrCreateCliente(supabase: any, phone: string, nome: string): 
     throw new Error('Falha ao criar cliente');
   }
 
-  console.log(`Novo cliente criado: ${nome} (ID: ${newClient.id})`);
+  // Adicionar ao grupo "potenciais clientes" (id=1) no Kanban
+  try {
+    const { data: grupo } = await supabase.from('grupos').select('lista_cliente_ids').eq('id', 1).single();
+    if (grupo) {
+      await supabase.from('grupos').update({ lista_cliente_ids: [...(grupo.lista_cliente_ids || []), newClient.id] }).eq('id', 1);
+    }
+  } catch (e) { console.error('Erro ao adicionar cliente ao grupo:', e); }
+
+  console.log(`Novo cliente criado: ${nome} (ID: ${newClient.id}, grupo: potenciais)`);
   return { id: newClient.id, bot_ativo: true, preferencia_audio: false };
 }
 
@@ -776,7 +785,17 @@ serve(async (req: Request) => {
       // 4. Marcar como lida no WhatsApp
       await markAsRead(messageData.messageId);
 
-      // 5. Verificar se o bot está ativo para este cliente
+      // 5a. Verificar se o bot está ativo GLOBALMENTE para WhatsApp
+      const { data: globalSettings } = await supabase.from('settings').select('bot_whatsapp_ativo').limit(1).single();
+      if (globalSettings && globalSettings.bot_whatsapp_ativo === false) {
+        console.log(`🚫 Bot WhatsApp desativado globalmente — mensagem salva, aguardando atendimento manual.`);
+        return new Response(JSON.stringify({ status: "ok", processed: true, bot_skipped: true, reason: "global_toggle_off" }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // 5b. Verificar se o bot está ativo para este cliente
       if (!cliente.bot_ativo) {
         console.log(`🚫 Bot desativado para cliente ID ${clienteId} — mensagem salva, aguardando atendimento manual.`);
         return new Response(JSON.stringify({ status: "ok", processed: true, bot_skipped: true }), {

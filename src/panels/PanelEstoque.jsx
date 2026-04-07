@@ -4,7 +4,7 @@ import { C, Btn } from "../components/ui.jsx";
 import ProdutosSection from "./estoque/ProdutosSection.jsx";
 
 const PanelEstoque = ({data, setData, openModal, isMobile}) => {
-  const [tab, setTab] = useState('produtos');
+  const [tab, setTab] = useState('fichas');
   const [filtCat, setFiltCat] = useState('todos');
   const [fichaModal, setFichaModal] = useState(null);
   const [editItem, setEditItem] = useState(null);

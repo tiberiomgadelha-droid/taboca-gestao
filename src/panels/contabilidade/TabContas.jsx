@@ -17,7 +17,7 @@ const TabContas = ({ data, setData, setTab, setFluxoFiltros }) => {
   return (
     <div>
       <div style={{ ...s.sectionTitle, marginBottom: 4 }}>Plano de Contas</div>
-      <div style={{ fontSize: 12, color: C.navyLight, marginBottom: 20 }}>Carteiras organizadas por tipo — Mar\u00e7o 2026</div>
+      <div style={{ fontSize: 12, color: C.navyLight, marginBottom: 20 }}>Carteiras organizadas por tipo — Março 2026</div>
 
       {/* CARTEIRAS DE RECEITA */}
       <div style={{ marginBottom: 24 }}>
@@ -61,7 +61,7 @@ const TabContas = ({ data, setData, setTab, setFluxoFiltros }) => {
 
       {/* PieChart distribuicao despesas */}
       <div style={{ ...s.card }}>
-        <div style={s.sectionTitle}>Distribui\u00e7\u00e3o de Despesas por Carteira</div>
+        <div style={s.sectionTitle}>Distribuição de Despesas por Carteira</div>
         <ResponsiveContainer width="100%" height={260}>
           <PieChart><Pie data={pieDesp} cx="50%" cy="50%" outerRadius={100} innerRadius={50} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={true} fontSize={11}>
             {pieDesp.map((_, i) => <Cell key={i} fill={pieColors[i % pieColors.length]} />)}

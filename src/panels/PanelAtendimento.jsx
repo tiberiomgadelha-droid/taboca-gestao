@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Bot, Send, Edit, X, BarChart2, ArrowLeft, MessageCircle, Loader, AlertCircle } from "lucide-react";
-import { sbInsert, sbUpdate } from "../utils/supabase.js";
+import { sbInsert, sbUpdate, sbUpsertSettings } from "../utils/supabase.js";
 import { fmtDate, fmtDateTime } from "../utils/helpers.js";
 import { C, s, Btn, Badge, logActivity } from "../components/ui.jsx";
 import VoiceInputButton from "../components/VoiceInputButton.jsx";
@@ -30,7 +30,7 @@ const PanelAtendimento = ({data, setData, isMobile}) => {
   const [msgInput, setMsgInput] = useState('');
   const [aiSuggestion, setAiSuggestion] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
-  const [autoReply, setAutoReply] = useState({whatsapp: false, instagram: false});
+  const [autoReply, setAutoReply] = useState({whatsapp: data.settings?.bot_whatsapp_ativo ?? false, instagram: data.settings?.bot_instagram_ativo ?? false});
   const [showStats, setShowStats] = useState(false);
   const [showInbox, setShowInbox] = useState(true);
   const endRef = useRef(null);
@@ -128,7 +128,7 @@ const PanelAtendimento = ({data, setData, isMobile}) => {
       // TODO: Adicionar envio WhatsApp aqui quando necessário
 
       // 2. Salvar no banco com status 'enviada'
-      await sbInsert('mensagens', {
+      const saved = await sbInsert('mensagens', {
         cliente_id: novaMensagem.cliente_id,
         canal: novaMensagem.canal,
         data_hora: novaMensagem.data_hora,
@@ -138,8 +138,8 @@ const PanelAtendimento = ({data, setData, isMobile}) => {
         origem: novaMensagem.origem,
       });
 
-      // Atualizar status na UI para 'enviada'
-      setData(prev=>({...prev, mensagens: prev.mensagens.map(m=>m.id===novaMensagem.id?{...m,status:'enviada'}:m)}));
+      // Atualizar ID temporário pelo ID real do banco e status para 'enviada'
+      setData(prev=>({...prev, mensagens: prev.mensagens.map(m=>m.id===novaMensagem.id?{...m, id: saved?.id || m.id, status:'enviada'}:m)}));
       logActivity(setData, 'mensagem', `Mensagem enviada para ${selCli?.nome||'cliente'} via ${canal}`, 'Tiberio');
     } catch(err) {
       console.error('Erro ao enviar mensagem:', err);
@@ -172,7 +172,13 @@ const PanelAtendimento = ({data, setData, isMobile}) => {
             <div style={{display:'flex',gap:10}}>
               {['whatsapp','instagram'].map(canal=>(
                 <label key={canal} style={{display:'flex',alignItems:'center',gap:4,cursor:'pointer',fontSize:11,fontWeight:600,color:autoReply[canal]?C.green:C.navyLight}}>
-                  <input type="checkbox" checked={autoReply[canal]} onChange={e=>setAutoReply(p=>({...p,[canal]:e.target.checked}))} style={{accentColor:C.green}}/>
+                  <input type="checkbox" checked={autoReply[canal]} onChange={e=>{
+                    const newVal = e.target.checked;
+                    setAutoReply(p=>({...p,[canal]:newVal}));
+                    const settingKey = canal==='whatsapp'?'bot_whatsapp_ativo':'bot_instagram_ativo';
+                    setData(prev=>({...prev, settings:{...prev.settings, [settingKey]:newVal}}));
+                    sbUpsertSettings({...data.settings, [settingKey]:newVal}).catch(console.error);
+                  }} style={{accentColor:C.green}}/>
                   {canal==='whatsapp'?'💬':'📷'} {canal.charAt(0).toUpperCase()+canal.slice(1)}
                 </label>
               ))}

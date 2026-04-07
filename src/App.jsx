@@ -177,7 +177,13 @@ export default function TabocaGestao() {
 
         // Apply inserts
         if (buffer.inserts[table].length > 0) {
-          const newRows = buffer.inserts[table].filter(r => !prev[table].some(er => er.id === r.id));
+          const newRows = buffer.inserts[table].filter(r => {
+            // Dedup por ID
+            if (prev[table].some(er => er.id === r.id)) return false;
+            // Dedup mensagens: evitar duplicata quando insert otimista já existe com ID temporário
+            if (table === 'mensagens' && r.conteudo && prev[table].some(er => er.conteudo === r.conteudo && er.cliente_id === r.cliente_id && er.de_cliente === r.de_cliente && Math.abs(new Date(er.data_hora) - new Date(r.data_hora)) < 5000)) return false;
+            return true;
+          });
           if (newRows.length > 0) {
             updated = { ...updated, [table]: [...updated[table], ...newRows] };
           }

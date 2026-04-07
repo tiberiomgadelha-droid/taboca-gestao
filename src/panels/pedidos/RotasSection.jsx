@@ -135,11 +135,7 @@ const RotasSection = ({
               ...prev,
               pedidos: prev.pedidos.map(p => rota.lista_pedido_ids.includes(p.id) && p.status_entrega!=='entregue' ? {...p, status_entrega:'em_rota'} : p),
               rotas: prev.rotas.map(r => r.id===sairEntregaRota ? {...r, entregador:entregadorSelecionado, status_rota:'em_rota'} : r),
-              fornadas: [
-    { id:1, data:'2026-03-18', hora_inicio:'07:30', hora_fim:'09:00', tipo:'Pães', encerramento_encomenda:'2026-03-16T21:00' },
-    { id:2, data:'2026-03-21', hora_inicio:'17:00', hora_fim:'21:00', tipo:'Pães + Pizzas', encerramento_encomenda:'2026-03-19T09:00' },
-  ],
-  activityLog: [{id:Date.now(),tipo:'pedido',descricao:`Rota "${rota.nome_rota}" saiu para entrega — ${entregadorSelecionado}`,data:new Date().toISOString(),operador:entregadorSelecionado,icon:'pedido'},...prev.activityLog]
+              activityLog: [{id:Date.now(),tipo:'pedido',descricao:`Rota "${rota.nome_rota}" saiu para entrega — ${entregadorSelecionado}`,data:new Date().toISOString(),operador:entregadorSelecionado,icon:'pedido'},...prev.activityLog]
             }));
             setSairEntregaRota(null);
           }}><Truck size={14}/>Confirmar Saída</Btn>

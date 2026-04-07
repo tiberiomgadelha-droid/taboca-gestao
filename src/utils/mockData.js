@@ -80,24 +80,14 @@ export const mkData = () => ({
   ],
   mensagens: [
     { id:1, cliente_id:1, canal:'whatsapp', data_hora:'2026-03-14T08:30', conteudo:'Oi! Quero encomendar 2 Bambuguettes para quarta. Pode ser?', status:'lida', pedido_id:null, de_cliente:true },
-    { id:2, cliente_id:1, canal:'whatsapp', data_hora:'2026-03-14T08:35', conteudo:'Oi Selva! Claro, temos disponibilidade. 2 Bambuguettes confirmados para quarta (18/03), entrega das 7h30–9h. Total: R$36,00 + frete R$8,00 = R$44,00. Pagamento via PIX: 73999991111. ✅', status:'lida', pedido_id:4, de_cliente:false },
+    { id:2, cliente_id:1, canal:'whatsapp', data_hora:'2026-03-14T08:35', conteudo:'Oi Selva! Claro, temos disponibilidade. 2 Bambuguettes confirmados para quarta (18/03), entrega das 7h30–9h. Total: R$36,00 + frete R$8,00 = R$44,00. Pagamento via PIX: 73999991111. ✅', status:'lida', pedido_id:null, de_cliente:false },
     { id:3, cliente_id:1, canal:'whatsapp', data_hora:'2026-03-14T08:40', conteudo:'Perfeito! Vou fazer o PIX agora.', status:'lida', pedido_id:null, de_cliente:true },
     { id:4, cliente_id:2, canal:'instagram', data_hora:'2026-03-13T15:00', conteudo:'Boa tarde! Tem pizza disponível para sexta-feira?', status:'nao_lida', pedido_id:null, de_cliente:true },
     { id:5, cliente_id:3, canal:'whatsapp', data_hora:'2026-03-13T10:00', conteudo:'Olá, quero um Pão Trançado para sexta-feira. Como faço?', status:'nao_lida', pedido_id:null, de_cliente:true },
     { id:6, cliente_id:6, canal:'instagram', data_hora:'2026-03-12T18:00', conteudo:'Amei o pão da última vez! Quero pedir de novo 🥖', status:'lida', pedido_id:null, de_cliente:true },
   ],
-  pedidos: [
-    { id:1, cliente_id:2, localidade_id:1, data_pedido:'2026-03-01T09:00', data_entrega:'2026-03-07T08:00', itens:[{produto_id:1, quantidade:2, valor:36.00},{produto_id:3, quantidade:1, valor:32.00}], valor_total:68.00, status_producao:'pronto', status_entrega:'entregue', pagamento_confirmado:true, observacoes:'' },
-    { id:2, cliente_id:5, localidade_id:4, data_pedido:'2026-03-02T10:00', data_entrega:'2026-03-07T08:00', itens:[{produto_id:3, quantidade:1, valor:32.00}], valor_total:32.00, status_producao:'pronto', status_entrega:'entregue', pagamento_confirmado:true, observacoes:'Retirada no ponto' },
-    { id:3, cliente_id:1, localidade_id:1, data_pedido:'2026-03-09T01:53', data_entrega:'2026-03-12T08:00', itens:[{produto_id:1, quantidade:2, valor:36.00},{produto_id:2, quantidade:1, valor:18.00}], valor_total:62.00, status_producao:'pronto', status_entrega:'entregue', pagamento_confirmado:true, observacoes:'' },
-    { id:4, cliente_id:1, localidade_id:1, data_pedido:'2026-03-14T08:30', data_entrega:'2026-03-18T08:00', itens:[{produto_id:1, quantidade:2, valor:36.00}], valor_total:44.00, status_producao:'pendente', status_entrega:'aguardando', pagamento_confirmado:false, observacoes:'Aguardando confirmação pagamento' },
-    { id:5, cliente_id:3, localidade_id:4, data_pedido:'2026-03-14T10:00', data_entrega:'2026-03-18T08:00', itens:[{produto_id:3, quantidade:1, valor:32.00}], valor_total:32.00, status_producao:'pendente', status_entrega:'aguardando', pagamento_confirmado:false, observacoes:'' },
-    { id:6, cliente_id:6, localidade_id:3, data_pedido:'2026-03-13T19:00', data_entrega:'2026-03-21T17:00', itens:[{produto_id:1, quantidade:1, valor:18.00},{produto_id:4, quantidade:1, valor:55.00}], valor_total:83.00, status_producao:'pendente', status_entrega:'aguardando', pagamento_confirmado:false, observacoes:'Sexta-feira noite' },
-  ],
-  rotas: [
-    { id:1, nome_rota:'Rota Centro — Quarta 18/03', data:'2026-03-18', lista_pedido_ids:[4,5], status_rota:'planejado', entregador:'Tiberio' },
-    { id:2, nome_rota:'Rota Norte — Sexta 21/03', data:'2026-03-21', lista_pedido_ids:[6], status_rota:'planejado', entregador:'Tiberio' },
-  ],
+  pedidos: [],
+  rotas: [],
   colaboradores: [
     { id:1, nome:'Tiberio Gadelha', funcao:'Produtor / Gestor', whatsapp:'55 (73) 99999-0000', valor_por_fornada:null, ativo:true },
   ],

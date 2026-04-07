@@ -249,7 +249,19 @@ const ModalNovoPedido = ({open, onClose, data, setData}) => {
         });
       }
       logs.forEach(l => sbInsert('activity_log', {tipo:l.tipo,descricao:l.descricao,data:l.data,operador:l.operador,icon:l.icon}).catch(console.error));
-      return {...prev,pedidos:[...prev.pedidos,ped],produtos:novosProdutos,activityLog:[...logs,...prev.activityLog]};
+      // Se pagamento confirmado, gerar transação no fluxo de caixa
+      let newTransactions = prev.transactions;
+      if(form.pagamento_confirmado) {
+        const conta = form.conta_pagamento || 'PIX';
+        const cat = parseInt(form.localidade_id)===4 ? 'Vendas Retirada' : 'Vendas Delivery';
+        const produtosDesc = form.itens.map(it=>{const p=prev.produtos.find(pr=>pr.id===it.produto_id);return `${it.quantidade}x ${p?.nome||'?'}`;}).join(', ');
+        const descricao = `Venda Pedido #${pedId} — ${cliNome} — ${produtosDesc}`;
+        const txn = {descricao,data:NOW.toISOString(),conta,categoria:cat,tipo:'receita',valor:total};
+        newTransactions = [{id:Date.now(),...txn},...prev.transactions];
+        logs.push({id:Date.now()+2,tipo:'transacao',descricao:`${descricao} — +${fmtCurrency(total)}`,data:NOW.toISOString(),operador:'TABOCA',icon:'receita'});
+        sbInsert('transactions', txn).catch(console.error);
+      }
+      return {...prev,pedidos:[...prev.pedidos,ped],produtos:novosProdutos,transactions:newTransactions,activityLog:[...logs,...prev.activityLog]};
     });
     onClose();
   };
@@ -271,9 +283,14 @@ const ModalNovoPedido = ({open, onClose, data, setData}) => {
         <div style={{display:'flex',justifyContent:'space-between',fontWeight:700,color:C.navy,marginTop:6,fontSize:13}}><span>Total com frete:</span><span>{fmtCurrency(total)}</span></div>
       </div>}
       <FormField label="Observações"><Textarea value={form.observacoes} onChange={set('observacoes')} placeholder="Detalhes do pedido, instruções especiais..."/></FormField>
-      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:form.pagamento_confirmado?4:12}}>
         <input type="checkbox" checked={form.pagamento_confirmado} onChange={e=>setForm(f=>({...f,pagamento_confirmado:e.target.checked}))} id="pago"/><label htmlFor="pago" style={{fontSize:13,fontWeight:600,cursor:'pointer'}}>Pagamento já confirmado</label>
       </div>
+      {form.pagamento_confirmado&&(
+        <FormField label="Carteira de recebimento" required>
+          <Select value={form.conta_pagamento||'PIX'} onChange={e=>setForm(f=>({...f,conta_pagamento:e.target.value}))}>{(data.settings?.contas||[]).map(c=><option key={c.id} value={c.nome}>{c.nome}</option>)}</Select>
+        </FormField>
+      )}
       <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
         <Btn variant='outline' onClick={onClose}>Cancelar</Btn>
         <Btn onClick={save}><Check size={14}/>Registrar Pedido</Btn>

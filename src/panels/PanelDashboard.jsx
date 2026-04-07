@@ -147,20 +147,7 @@ const PanelDashboard = ({data, setPanel, openModal, now, setData}) => {
         <KPICard icon={UserPlus} label="Novos Clientes Adicionados no Mês" value={novosClientesMes} color={C.blue} sub={monthStr}/>
       </div>
 
-      {/* Sugestões Proativas do Agente IA */}
-      {suggestions.length > 0 && (
-        <div style={{display:'flex',gap:10,marginBottom:16,overflowX:'auto',paddingBottom:4}}>
-          {suggestions.map((sug,i)=>(
-            <div key={i} onClick={()=>setPanel('assistente')} style={{background:'#fff',border:`1.5px solid ${sug.color}20`,borderRadius:10,padding:'10px 14px',minWidth:220,flex:'0 0 auto',cursor:'pointer',display:'flex',alignItems:'center',gap:10,transition:'box-shadow 0.15s'}} onMouseEnter={e=>e.currentTarget.style.boxShadow=`0 2px 10px ${sug.color}20`} onMouseLeave={e=>e.currentTarget.style.boxShadow='none'}>
-              <span style={{fontSize:18}}>{sug.icon}</span>
-              <div style={{flex:1}}>
-                <div style={{fontSize:12,fontWeight:600,color:C.navy,lineHeight:1.3}}>{sug.text}</div>
-                <div style={{fontSize:10,color:C.primary,fontWeight:600,marginTop:2}}>Clique para perguntar ao Bot →</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Sugestões Proativas removidas */}
 
       {/* Middle row */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 320px',gap:16,marginBottom:16}}>

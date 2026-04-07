@@ -63,13 +63,15 @@ const PedidosList = ({
       }
       if(nowPaid && wasNotPaid){
         const cli = prev.clientes.find(c=>c.id===editPedido.cliente_id);
-        const loc = prev.localidades.find(l=>l.id===editPedido.localidade_id);
         const cat = editPedido.localidade_id===4 ? 'Vendas Retirada' : 'Vendas Delivery';
-        const txn = {descricao:`Venda Pedido #${editPedido.id} - ${cli?.nome||'Cliente'}`,data:new Date().toISOString(),conta:'PIX',categoria:cat,tipo:'receita',valor:editPedido.valor_total};
+        const conta = editPedido._conta_pagamento || 'PIX';
+        const produtosDesc = editPedido.itens.map(it=>{const p=prev.produtos.find(pr=>pr.id===it.produto_id);return `${it.quantidade}x ${p?.nome||'?'}`;}).join(', ');
+        const descricao = `Venda Pedido #${editPedido.id} — ${cli?.nome||'Cliente'} — ${produtosDesc}`;
+        const txn = {descricao,data:new Date().toISOString(),conta,categoria:cat,tipo:'receita',valor:editPedido.valor_total};
         newData.transactions = [{id:Date.now(),...txn},...newData.transactions];
-        newData.activityLog = [{id:Date.now(),tipo:'transacao',descricao:`Venda Pedido #${editPedido.id} - ${cli?.nome} — +R$${editPedido.valor_total.toFixed(2)}`,data:new Date().toISOString(),operador:'TABOCA',icon:'receita'},...newData.activityLog];
+        newData.activityLog = [{id:Date.now(),tipo:'transacao',descricao:`${descricao} — +R$${editPedido.valor_total.toFixed(2)}`,data:new Date().toISOString(),operador:'TABOCA',icon:'receita'},...newData.activityLog];
         sbInsert('transactions', txn).catch(console.error);
-        sbInsert('activity_log', {tipo:'transacao',descricao:`Venda Pedido #${editPedido.id} - ${cli?.nome} — +R$${editPedido.valor_total.toFixed(2)}`,data:new Date().toISOString(),operador:'TABOCA',icon:'receita'}).catch(console.error);
+        sbInsert('activity_log', {tipo:'transacao',descricao:`${descricao} — +R$${editPedido.valor_total.toFixed(2)}`,data:new Date().toISOString(),operador:'TABOCA',icon:'receita'}).catch(console.error);
       }
       return newData;
     });
@@ -120,9 +122,16 @@ const PedidosList = ({
             {editPedido.itens.map((it,i)=>{const p=data.produtos.find(pr=>pr.id===it.produto_id);return<div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:12,padding:'4px 0',borderBottom:`1px solid ${C.borderLight}`}}><span>{p?.emoji} {it.quantidade}x {p?.nome}</span><div style={{display:'flex',alignItems:'center',gap:8}}><span style={{fontWeight:700}}>{fmtCurrency(it.valor)}</span><button onClick={()=>{const ni=editPedido.itens.filter((_,j)=>j!==i);const frete=data.localidades.find(l=>l.id===editPedido.localidade_id)?.valor_entrega||0;setEditPedido({...editPedido,itens:ni,valor_total:ni.reduce((a,x)=>a+x.valor,0)+frete});}} style={{border:'none',background:'none',cursor:'pointer',padding:2}}><X size={12} color={C.red}/></button></div></div>;})}
             <div style={{display:'flex',justifyContent:'space-between',fontWeight:700,color:C.navy,marginTop:6,fontSize:13}}><span>Total:</span><span>{fmtCurrency(editPedido.valor_total)}</span></div>
           </div>}
-          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:editPedido.pagamento_confirmado&&!data.pedidos.find(p=>p.id===editPedido.id)?.pagamento_confirmado?4:12}}>
             <input type="checkbox" checked={editPedido.pagamento_confirmado} onChange={e=>setEditPedido({...editPedido,pagamento_confirmado:e.target.checked})} id="editPago"/><label htmlFor="editPago" style={{fontSize:13,fontWeight:600,cursor:'pointer'}}>Pagamento confirmado</label>
           </div>
+          {editPedido.pagamento_confirmado&&!data.pedidos.find(p=>p.id===editPedido.id)?.pagamento_confirmado&&(
+            <FormField label="Carteira de recebimento" required>
+              <Select value={editPedido._conta_pagamento||'PIX'} onChange={e=>setEditPedido({...editPedido,_conta_pagamento:e.target.value})}>
+                {(data.settings?.contas||[]).map(c=><option key={c.id} value={c.nome}>{c.nome}</option>)}
+              </Select>
+            </FormField>
+          )}
           <FormField label="Observações"><Textarea value={editPedido.observacoes||''} onChange={e=>setEditPedido({...editPedido,observacoes:e.target.value})}/></FormField>
           <div style={{display:'flex',gap:10,marginTop:8}}>
             <Btn variant='outline' onClick={deleteEditPedido} style={{color:C.red,borderColor:C.red}}><Trash2 size={13}/>Excluir</Btn>
