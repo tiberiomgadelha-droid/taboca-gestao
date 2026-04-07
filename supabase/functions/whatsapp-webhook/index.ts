@@ -420,42 +420,64 @@ async function executeAcoes(supabase: any, acoes: any[], clienteId: number): Pro
         // ── PEDIDOS ──
         case 'criar_pedido': {
           const emEstoque = d.em_estoque === true;
+
+          // Normalizar itens: o agente pode enviar {produto: "Nome", quantidade: 2} ou {produto_id: 1, quantidade: 2}
+          // Precisamos garantir o formato {produto_id, quantidade, valor} que o frontend espera
+          const { data: todosProdutos } = await supabase.from('produtos').select('id, nome, valor_unitario, quantidade');
+          const itensRaw = d.itens || [];
+          const itensNormalizados = itensRaw.map((item: any) => {
+            let produtoDb = null;
+            if (item.produto_id) {
+              produtoDb = (todosProdutos || []).find((p: any) => p.id === item.produto_id);
+            }
+            if (!produtoDb && (item.produto || item.nome)) {
+              const nomeBusca = (item.produto || item.nome || '').toLowerCase();
+              produtoDb = (todosProdutos || []).find((p: any) => p.nome.toLowerCase().includes(nomeBusca) || nomeBusca.includes(p.nome.toLowerCase()));
+            }
+            const qty = item.quantidade || 1;
+            const preco = item.valor_unitario || item.preco_unit || item.preco_unitario || produtoDb?.valor_unitario || 0;
+            return {
+              produto_id: produtoDb?.id || item.produto_id || null,
+              quantidade: qty,
+              valor: preco * qty,
+            };
+          });
+          const valorTotal = d.valor_total || itensNormalizados.reduce((a: number, it: any) => a + (it.valor || 0), 0);
+
           const { data: pedido, error } = await supabase.from('pedidos').insert({
             cliente_id: d.cliente_id || clienteId,
-            data_pedido: new Date().toISOString().split('T')[0],
+            data_pedido: new Date().toISOString(),
             data_entrega: d.data_entrega || null,
-            itens: d.itens || [],
-            valor_total: d.valor_total || 0,
+            itens: itensNormalizados,
+            valor_total: valorTotal,
             localidade_id: d.localidade_id || null,
             observacoes: d.observacoes || null,
             status_producao: emEstoque ? 'pronto' : 'pendente',
-            status_entrega: 'pendente',
+            status_entrega: 'aguardando',
             pagamento_confirmado: false,
           }).select('id').single();
 
           if (error) {
             console.error('Erro criar_pedido:', error);
           } else {
-            console.log(`✅ Pedido #${pedido.id} criado (produção: ${emEstoque ? 'pronto' : 'pendente'})`);
+            console.log(`✅ Pedido #${pedido.id} criado (valor: R$${valorTotal}, produção: ${emEstoque ? 'pronto' : 'pendente'})`);
             // Decrementar estoque se em_estoque
-            if (emEstoque && d.itens) {
-              for (const item of d.itens) {
+            if (emEstoque) {
+              for (const item of itensNormalizados) {
                 if (item.produto_id && item.quantidade) {
-                  await supabase.rpc('decrement_estoque', undefined).then(() => {});
-                  // Fallback: update direto
-                  const { data: prod } = await supabase.from('produtos').select('quantidade').eq('id', item.produto_id).single();
-                  if (prod) {
-                    const novaQtd = Math.max(0, (prod.quantidade || 0) - item.quantidade);
+                  const prodDb = (todosProdutos || []).find((p: any) => p.id === item.produto_id);
+                  if (prodDb) {
+                    const novaQtd = Math.max(0, (prodDb.quantidade || 0) - item.quantidade);
                     await supabase.from('produtos').update({ quantidade: novaQtd }).eq('id', item.produto_id);
-                    console.log(`📦 Estoque produto ${item.produto_id}: ${prod.quantidade} → ${novaQtd}`);
+                    console.log(`📦 Estoque produto ${item.produto_id}: ${prodDb.quantidade} → ${novaQtd}`);
                   }
                 }
               }
             }
             // Registrar no activity_log
             await supabase.from('activity_log').insert({
-              tipo: 'pedido', descricao: `Pedido #${pedido.id} criado via atendente IA: ${description || ''}`,
-              data: new Date().toISOString(), operador: 'Atendente IA', icon: '📋'
+              tipo: 'pedido', descricao: `Pedido #${pedido.id} criado via atendente IA — R$${valorTotal}: ${description || ''}`,
+              data: new Date().toISOString(), operador: 'Atendente IA', icon: 'pedido'
             });
           }
           break;
@@ -522,7 +544,7 @@ async function executeAcoes(supabase: any, acoes: any[], clienteId: number): Pro
           const { error: errPedido } = await supabase.from('pedidos').update({ pagamento_confirmado: true }).eq('id', d.pedido_id);
           if (errPedido) { console.error('Erro confirmar pagamento pedido:', errPedido); break; }
           // 2. Criar transação de receita
-          const { error: errTx } = await supabase.from('transacoes').insert({
+          const { error: errTx } = await supabase.from('transactions').insert({
             descricao: `Pagamento Pedido #${d.pedido_id}`,
             data: new Date().toISOString().split('T')[0],
             tipo: 'receita',
@@ -542,7 +564,7 @@ async function executeAcoes(supabase: any, acoes: any[], clienteId: number): Pro
 
         // ── TRANSAÇÕES ──
         case 'criar_transacao': {
-          const { error } = await supabase.from('transacoes').insert({
+          const { error } = await supabase.from('transactions').insert({
             descricao: d.descricao || '',
             data: d.data || new Date().toISOString().split('T')[0],
             tipo: d.tipo || 'receita',
@@ -557,7 +579,7 @@ async function executeAcoes(supabase: any, acoes: any[], clienteId: number): Pro
 
         case 'editar_transacao': {
           if (!d.transacao_id) { console.error('editar_transacao sem transacao_id'); break; }
-          const { error } = await supabase.from('transacoes').update(d.campos || {}).eq('id', d.transacao_id);
+          const { error } = await supabase.from('transactions').update(d.campos || {}).eq('id', d.transacao_id);
           if (error) console.error('Erro editar_transacao:', error);
           else console.log(`✅ Transação #${d.transacao_id} atualizada`);
           break;
@@ -565,7 +587,7 @@ async function executeAcoes(supabase: any, acoes: any[], clienteId: number): Pro
 
         case 'apagar_transacao': {
           if (!d.transacao_id) { console.error('apagar_transacao sem transacao_id'); break; }
-          const { error } = await supabase.from('transacoes').delete().eq('id', d.transacao_id);
+          const { error } = await supabase.from('transactions').delete().eq('id', d.transacao_id);
           if (error) console.error('Erro apagar_transacao:', error);
           else console.log(`✅ Transação #${d.transacao_id} removida`);
           break;
