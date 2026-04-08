@@ -48,19 +48,39 @@ export const callAgentAtendente = async (cliente_id, mensagem, canal, history=[]
   return resp.json();
 };
 
+// Mapa de colunas inglês→português para normalização
+const colMap = {amount:'valor',description:'descricao',date:'data',category:'categoria',account:'conta',name:'nome',quantity:'quantidade',price:'valor_unitario',unit_price:'valor_unitario',type:'tipo',notes:'observacoes',observation:'observacao',phone:'whatsapp',address:'endereco_completo',preferences:'preferencias',role:'funcao',active:'ativo',paid:'pagamento_confirmado'};
+const normalizeData = (d) => {
+  const out = {};
+  for (const [k, v] of Object.entries(d)) {
+    out[colMap[k] || k] = v;
+  }
+  return out;
+};
+
 // Executar acoes sugeridas pelo Agente
 export const executeAgentAction = async (action, data, setData) => {
+  const type = (action.type||'').toLowerCase().trim();
   try {
-    if(action.type === 'insert' && action.table && action.data) {
-      const saved = await sbInsert(action.table, action.data);
+    if(type === 'insert' && action.table && action.data) {
+      const saved = await sbInsert(action.table, normalizeData(action.data));
       setData(prev => {
         const key = action.table === 'activity_log' ? 'activityLog' : action.table;
         return {...prev, [key]: key === 'activityLog' ? [saved, ...(prev[key]||[])] : [...(prev[key]||[]), saved]};
       });
       return { success: true, data: saved };
     }
-    if(action.type === 'update' && action.table && action.data && action.data.id) {
-      const { id, ...updates } = action.data;
+    if((type === 'update' || type === 'upsert') && action.table && action.data) {
+      const normalized = normalizeData(action.data);
+      let id = normalized.id;
+      // Se não tem ID, tentar resolver pelo nome no estado local
+      if (!id && normalized.nome) {
+        const key = action.table === 'activity_log' ? 'activityLog' : action.table;
+        const found = (data[key]||[]).find(item => item.nome && item.nome.toLowerCase().includes(normalized.nome.toLowerCase()));
+        if (found) id = found.id;
+      }
+      if (!id) return { success: false, error: `Item não encontrado para atualizar em ${action.table}` };
+      const { id: _id, nome: _nome, ...updates } = normalized;
       const saved = await sbUpdate(action.table, id, updates);
       setData(prev => {
         const key = action.table === 'activity_log' ? 'activityLog' : action.table;
@@ -68,7 +88,7 @@ export const executeAgentAction = async (action, data, setData) => {
       });
       return { success: true, data: saved };
     }
-    if(action.type === 'delete' && action.table && action.data?.id) {
+    if(type === 'delete' && action.table && action.data?.id) {
       await sbDelete(action.table, action.data.id);
       setData(prev => {
         const key = action.table === 'activity_log' ? 'activityLog' : action.table;
@@ -76,7 +96,17 @@ export const executeAgentAction = async (action, data, setData) => {
       });
       return { success: true };
     }
-    return { success: false, error: 'Ação não reconhecida' };
+    // Fallback: tentar interpretar types alternativos como insert ou update
+    if (action.table && action.data) {
+      const t = type;
+      if (t.includes('criar') || t.includes('create') || t.includes('add') || t.includes('novo')) {
+        return executeAgentAction({...action, type:'insert'}, data, setData);
+      }
+      if (t.includes('atualizar') || t.includes('editar') || t.includes('edit') || t.includes('change') || t.includes('update_stock') || t.includes('stock')) {
+        return executeAgentAction({...action, type:'update'}, data, setData);
+      }
+    }
+    return { success: false, error: 'Ação não reconhecida: ' + type };
   } catch(e) {
     console.error('executeAgentAction error:', e);
     return { success: false, error: e.message };

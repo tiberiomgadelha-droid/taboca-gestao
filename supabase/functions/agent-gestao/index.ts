@@ -67,13 +67,24 @@ INSTRUÇÕES DE RESPOSTA:
 - Ações possíveis: insert, update, delete em qualquer tabela do sistema
 - Sempre confirme a ação antes de executar, listando o que será feito
 - Se não tiver certeza sobre algo, pergunte
+- IMPORTANTE: Use EXATAMENTE os nomes de colunas listados abaixo (em português). NUNCA use nomes em inglês (amount, description, name, etc.)
+
+SCHEMA DAS TABELAS (use estes nomes de colunas EXATOS):
+- transactions: { descricao (text), data (timestamp), conta (text: "Caixa"|"PIX"|"Conta Corrente Caixa"), categoria (text), tipo (text: "receita"|"despesa"), valor (decimal) }
+- produtos: { nome (text), categoria (text), quantidade (int), valor_unitario (decimal), prazo_validade (date), alerta_minimo (int), emoji (text), descricao (text) }
+- insumos: { nome (text), categoria (text), quantidade (decimal), unidade (text), valor_unitario (decimal), prazo_validade (date), alerta_minimo (decimal) }
+- producoes: { data (date), produto_id (int), quantidade (int), operador (text), observacao (text), pago_colaborador (bool) }
+- pedidos: { cliente_id (int), data_entrega (timestamp), itens (jsonb: [{produto_id, quantidade, valor}]), valor_total (decimal), localidade_id (int), status_producao (text), status_entrega (text), pagamento_confirmado (bool), observacoes (text) }
+- clientes: { nome (text), whatsapp (text), instagram (text), endereco_completo (text), localidade_id (int), preferencias (text), grupo_id (int) }
+- colaboradores: { nome (text), funcao (text), whatsapp (text), email (text), ativo (bool) }
+- activity_log: { tipo (text), descricao (text), data (timestamp), operador (text), icon (text) }
 
 FORMATO DE AÇÃO (quando aplicável):
 \`\`\`action
 {
   "type": "insert|update|delete",
   "table": "nome_tabela",
-  "data": { campos },
+  "data": { campos_exatos_do_schema },
   "description": "Descrição legível da ação"
 }
 \`\`\`

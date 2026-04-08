@@ -139,15 +139,11 @@ ${localidades?.map((l: any) => `- ${l.nome_localidade} (ID: ${l.id}): R$ ${Numbe
 FICHAS TÉCNICAS E MODO DE PREPARO:
 ${fichas?.map((f: any) => {
   const prod = f.produtos;
-  return \`${prod?.emoji || '📋'} ${prod?.nome || 'Produto'} (${prod?.categoria || ''})
-  - Ingredientes: ${f.ingredientes ? JSON.stringify(f.ingredientes) : 'N/A'}
-  - Modo de preparo: ${f.modo_preparo || 'N/A'}
-  - Rendimento: ${f.rendimento || 'N/A'} unidades | Tempo: ${f.tempo_preparo || 'N/A'} min
-  - Custo material: R$ ${f.custo_material ? Number(f.custo_material).toFixed(2) : 'N/A'} | Preço venda: R$ ${f.valor_venda_unitario ? Number(f.valor_venda_unitario).toFixed(2) : 'N/A'}\`;
+  return (prod?.emoji || '📋') + ' ' + (prod?.nome || 'Produto') + ' (' + (prod?.categoria || '') + ')\n  - Ingredientes: ' + (f.ingredientes ? JSON.stringify(f.ingredientes) : 'N/A') + '\n  - Modo de preparo: ' + (f.modo_preparo || 'N/A') + '\n  - Rendimento: ' + (f.rendimento || 'N/A') + ' unidades | Tempo: ' + (f.tempo_preparo || 'N/A') + ' min\n  - Custo material: R$ ' + (f.custo_material ? Number(f.custo_material).toFixed(2) : 'N/A') + ' | Preço venda: R$ ' + (f.valor_venda_unitario ? Number(f.valor_venda_unitario).toFixed(2) : 'N/A');
 }).join('\n') || 'Nenhuma ficha técnica cadastrada.'}
 
 TODOS OS PRODUTOS (incluindo estoque zero — para encomenda):
-${todosProdutos?.map((p: any) => \`- ID:${p.id} ${p.emoji || '🍞'} ${p.nome} (${p.categoria}) — R$ ${Number(p.valor_unitario).toFixed(2)} — Estoque: ${p.quantidade}\`).join('\n') || 'Nenhum produto.'}
+${todosProdutos?.map((p: any) => '- ID:' + p.id + ' ' + (p.emoji || '🍞') + ' ' + p.nome + ' (' + p.categoria + ') — R$ ' + Number(p.valor_unitario).toFixed(2) + ' — Estoque: ' + p.quantidade).join('\n') || 'Nenhum produto.'}
 
 CANAL DE ATENDIMENTO: ${canal || 'whatsapp'}
 
@@ -176,6 +172,10 @@ REGRAS DE ESTOQUE E STATUS:
 - Produto com quantidade > 0 no cardápio: em_estoque = true → pedido com status_producao="pronto", status_entrega="pendente"
 - Produto com quantidade = 0 (sob encomenda): em_estoque = false → pedido com status_producao="pendente", status_entrega="pendente"
 - Informar ao cliente: "Temos em estoque, já separo pra você!" ou "Esse é por encomenda, preciso saber a data de entrega"
+
+ANTES DE CRIAR PEDIDO — dados obrigatórios a coletar:
+- Data de entrega/retirada: SEMPRE pergunte "Para quando você precisa?" ANTES de confirmar o pedido. Formato YYYY-MM-DD.
+- Se o cliente não informar, pergunte. Nunca crie pedido sem data_entrega.
 
 AÇÕES DISPONÍVEIS (retorne em bloco \`\`\`action):
 

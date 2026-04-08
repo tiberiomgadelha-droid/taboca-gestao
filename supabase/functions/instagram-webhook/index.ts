@@ -282,6 +282,18 @@ async function executeAcoes(supabase: any, acoes: any[], clienteId: number): Pro
       switch (type) {
         // ── PEDIDOS ──
         case 'criar_pedido': {
+          // Anti-duplicata: verificar se pedido idêntico foi criado nos últimos 60s
+          const umMinAtras = new Date(Date.now() - 60000).toISOString();
+          const { data: pedRecente } = await supabase.from('pedidos')
+            .select('id')
+            .eq('cliente_id', d.cliente_id || clienteId)
+            .gte('created_at', umMinAtras)
+            .limit(1);
+          if (pedRecente && pedRecente.length > 0) {
+            console.log(`⚠️ Pedido duplicado ignorado — já existe pedido #${pedRecente[0].id} criado há menos de 60s para este cliente`);
+            break;
+          }
+
           const emEstoque = d.em_estoque === true;
 
           // Normalizar itens: o agente pode enviar {produto: "Nome"} ou {produto_id: 1}
@@ -306,13 +318,46 @@ async function executeAcoes(supabase: any, acoes: any[], clienteId: number): Pro
           });
           const valorTotal = d.valor_total || itensNormalizados.reduce((a: number, it: any) => a + (it.valor || 0), 0);
 
+          // Normalizar data_entrega
+          let dataEntrega = d.data_entrega || null;
+          if (!dataEntrega && description) {
+            const dateMatch = description.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?/);
+            if (dateMatch) {
+              const dia = dateMatch[1].padStart(2, '0');
+              const mes = dateMatch[2].padStart(2, '0');
+              const ano = dateMatch[3] || new Date().getFullYear().toString();
+              dataEntrega = `${ano}-${mes}-${dia}T08:00:00`;
+            }
+          }
+          if (dataEntrega && !dataEntrega.includes('T')) {
+            dataEntrega = dataEntrega + 'T08:00:00';
+          }
+
+          // Normalizar localidade_id
+          let localidadeId = d.localidade_id || null;
+          if (!localidadeId) {
+            const { data: localidades } = await supabase.from('localidades').select('id, nome_localidade');
+            const textoCompleto = ((d.localidade || '') + ' ' + (d.observacoes || '') + ' ' + (description || '')).toLowerCase();
+            if (textoCompleto.includes('retirada') || textoCompleto.includes('retira')) {
+              const retirada = (localidades || []).find((l: any) => l.nome_localidade.toLowerCase().includes('retirada'));
+              if (retirada) localidadeId = retirada.id;
+            } else if (localidades) {
+              for (const loc of localidades) {
+                if (textoCompleto.includes(loc.nome_localidade.toLowerCase())) {
+                  localidadeId = loc.id;
+                  break;
+                }
+              }
+            }
+          }
+
           const { data: pedido, error } = await supabase.from('pedidos').insert({
             cliente_id: d.cliente_id || clienteId,
             data_pedido: new Date().toISOString(),
-            data_entrega: d.data_entrega || null,
+            data_entrega: dataEntrega,
             itens: itensNormalizados,
             valor_total: valorTotal,
-            localidade_id: d.localidade_id || null,
+            localidade_id: localidadeId,
             observacoes: d.observacoes || null,
             status_producao: emEstoque ? 'pronto' : 'pendente',
             status_entrega: 'aguardando',
