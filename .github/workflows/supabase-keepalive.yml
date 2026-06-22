@@ -1,0 +1,36 @@
+name: Supabase Keep-Alive
+
+# Pinga o banco a cada 5 dias para evitar pausa por inatividade (free tier pausa em 7 dias).
+# Também pode ser disparado manualmente para reativar após uma pausa.
+
+on:
+  schedule:
+    - cron: '0 8 */5 * *'   # A cada 5 dias, às 08:00 UTC
+  workflow_dispatch:          # Permite rodar manualmente pelo GitHub Actions
+
+jobs:
+  ping-supabase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API
+        run: |
+          echo "🔁 Pingando Supabase para manter o projeto ativo..."
+
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${{ secrets.VITE_SUPABASE_URL }}/rest/v1/?apikey=${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
+            -H "apikey: ${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.VITE_SUPABASE_ANON_KEY }}")
+
+          echo "Status HTTP: $RESPONSE"
+
+          if [ "$RESPONSE" -ge 200 ] && [ "$RESPONSE" -lt 500 ]; then
+            echo "✅ Supabase respondeu corretamente. Projeto ativo."
+          else
+            echo "❌ Supabase retornou erro $RESPONSE. Projeto pode estar pausado."
+            echo ""
+            echo "👉 Para reativar manualmente:"
+            echo "   1. Acesse https://supabase.com/dashboard"
+            echo "   2. Selecione o projeto tabocapaoepizza"
+            echo "   3. Clique em 'Restore project'"
+            exit 1
+          fi
